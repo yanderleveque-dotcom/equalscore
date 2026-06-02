@@ -1,0 +1,17 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Dependency dirs (none required, but ignored if ever added)
+node_modules/
+
+# Build output (none — this is a static site)
+dist/
+build/

@@ -100,20 +100,28 @@ desplegable. Cualquier hosting de archivos estáticos funciona.
 No se requiere configuración extra: las rutas a `styles/` y `scripts/` son relativas y
 funcionan bajo el subdirectorio del proyecto.
 
-### Opción B — Netlify
+### Opción B — Netlify (recomendado)
 
-**Desde la interfaz (drag & drop):**
+El repositorio incluye un [`netlify.toml`](netlify.toml) ya configurado (sitio
+estático, sin build, *publish* = raíz), así que ambas vías funcionan sin tocar
+ajustes.
 
-1. Entra a <https://app.netlify.com/drop>.
-2. Arrastra la carpeta `equalscore-app/` completa.
-3. Listo: Netlify entrega una URL pública.
+**Desde la interfaz (drag & drop) — lo más rápido, sin instalar nada:**
 
-**Conectando el repositorio (deploy continuo):**
+1. Entra a <https://app.netlify.com/drop> (crea una cuenta gratis o inicia sesión).
+2. Arrastra **toda la carpeta `equalscore-app/`** a la zona de *drop* (no un `.zip`,
+   la carpeta entera con `index.html` dentro).
+3. En unos segundos Netlify publica el sitio y te da una URL pública
+   (`https://<algo>.netlify.app`). Puedes renombrarla en *Site settings → Change
+   site name*.
 
-1. *Add new site → Import an existing project* y elige tu repo.
-2. **Build command:** *(déjalo vacío)*.
-3. **Publish directory:** `equalscore-app` (o `.` si los archivos están en la raíz).
-4. *Deploy*.
+**Conectando el repositorio (deploy continuo en cada push):**
+
+1. Sube este repo a GitHub/GitLab (ver más abajo).
+2. En Netlify: *Add new site → Import an existing project* y elige tu repo.
+3. **Build command:** *(vacío)* · **Publish directory:** `.` (la raíz).
+   *(El `netlify.toml` ya lo declara, así que normalmente Netlify lo detecta solo.)*
+4. *Deploy*. Cada `git push` a `main` vuelve a publicar automáticamente.
 
 ### Opción C — Vercel
 

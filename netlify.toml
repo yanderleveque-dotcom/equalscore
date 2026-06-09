@@ -1,0 +1,27 @@
+# Netlify configuration for the EqualScore demo (static site, no build step).
+# The repository root is the deployable artifact: index.html + styles/ + scripts/.
+
+[build]
+  publish = "."
+  command = ""
+
+# The app uses hash-based routing (e.g. /#/cliente, /#/empresa), so every real
+# request is for "/". This catch-all just makes any direct path fall back to
+# index.html (served, not redirected) so deep links never 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Sensible defaults. HTML is revalidated each load so updates show immediately;
+# the versioned-by-content static assets can be cached normally.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"

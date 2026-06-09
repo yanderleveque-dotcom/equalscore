@@ -7,16 +7,6 @@ import { computeScore, explain, bandFor, isApproved } from "./scoring.js";
 
 const STEPS = ["Datos personales", "Situación laboral", "Datos alternativos", "Crédito solicitado"];
 
-// Loan term options in months, from 6 months up to 30 years (360 months).
-const TERM_OPTIONS = [6, 9, 12, 18, 24, 36, 48, 60, 72, 84, 96, 120, 180, 240, 300, 360];
-function termLabel(m) {
-  if (m % 12 === 0 && m >= 24) {
-    const y = m / 12;
-    return `${m} meses (${y} ${y === 1 ? "año" : "años"})`;
-  }
-  return `${m} meses`;
-}
-
 const PURPOSE_OPTIONS = [
   "Capital de trabajo",
   "Comprar departamento",
@@ -291,7 +281,7 @@ function step4(d) {
   return `<fieldset><legend>Crédito solicitado</legend>
     <div class="grid-2">
       ${field("Monto (CLP)", `<input type="number" data-field="amount" value="${esc(d.amount)}" min="0" step="50000" placeholder="800000" />`)}
-      ${field("Plazo", `<select data-field="termMonths">${TERM_OPTIONS.map((m) => `<option value="${m}" ${String(d.termMonths) === String(m) ? "selected" : ""}>${termLabel(m)}</option>`).join("")}</select>`)}
+      ${field("Plazo (meses)", `<select data-field="termMonths">${[6, 9, 12, 18, 24, 36].map((m) => `<option value="${m}" ${String(d.termMonths) === String(m) ? "selected" : ""}>${m} meses</option>`).join("")}</select>`)}
     </div>
     ${field("Propósito", `<select data-field="purpose" required>
       <option value="">Selecciona</option>

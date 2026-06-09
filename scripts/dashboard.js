@@ -345,7 +345,7 @@ export function renderDashboard(deps) {
           <div><span class="ml">Monto prestado</span><span class="mv">${loan ? clp(loan.amount) : "—"}</span></div>
           <div><span class="ml">Saldo</span><span class="mv">${loan ? clp(loan.saldo) : "—"}</span></div>
           <div><span class="ml">Tasa mensual</span><span class="mv">${loan ? pct(loan.rateMonthly) : "—"}</span></div>
-          <div><span class="ml">Plazo</span><span class="mv">${loan ? termLabelDetail(loan.termMonths) : "—"}</span></div>
+          <div><span class="ml">Plazo</span><span class="mv">${loan ? loan.termMonths + " meses" : "—"}</span></div>
           <div><span class="ml">Próxima cuota</span><span class="mv">${loan && loan.nextDueDate ? fmtDate(loan.nextDueDate) : "—"}</span></div>
           <div><span class="ml">Propósito</span><span class="mv">${loan ? esc(loan.purpose) : "—"}</span></div>
         </div>
@@ -578,10 +578,6 @@ function parityBadge(state, gap) {
 }
 function bandLabelFor(band) {
   return { bajo: "Riesgo bajo", medio: "Riesgo medio", alto: "Riesgo alto" }[band] || "";
-}
-function termLabelDetail(m) {
-  if (m % 12 === 0 && m >= 24) return `${m} meses (${m / 12} años)`;
-  return `${m} meses`;
 }
 function sortVal(c, key) {
   if (key === "monto") return c.loan ? c.loan.amount : -1;

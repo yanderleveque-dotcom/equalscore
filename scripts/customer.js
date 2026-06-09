@@ -3,7 +3,7 @@
 import { esc, clp, num } from "./utils.js";
 import { isValidRut, formatRut, formatRutInput } from "./rut.js";
 import { PLACES, REGIONS } from "./data.js";
-import { computeScore, explain, bandFor, isApproved } from "./scoring.js";
+import { computeScore, explain, bandFor, recommendOffer } from "./scoring.js";
 
 const STEPS = ["Datos personales", "Situación laboral", "Datos alternativos", "Crédito solicitado"];
 
@@ -180,9 +180,11 @@ export function renderCustomer(onSubmitConsulta) {
     if (send) send.addEventListener("click", () => {
       const rec = buildConsultaRecord(state.data, state.result);
       onSubmitConsulta?.(rec);
-      send.textContent = "Enviado a la empresa ✓";
+      send.textContent = "Enviado ✓ · pendiente de aprobación";
       send.disabled = true;
       send.classList.add("is-sent");
+      const note = root.querySelector("#send-note");
+      if (note) note.hidden = false;
     });
     drawGauge(root, state.result.score);
   }
@@ -293,9 +295,37 @@ function step4(d) {
 
 // ---- Result ---------------------------------------------------------------
 function resultHTML(d, res) {
-  const approved = isApproved(res.score);
   const earned = res.score - 300;
   const headroom = 850 - res.score;
+
+  // Band-aware headline. The final decision now belongs to the company, so we
+  // describe the strength of the score rather than claiming "pre-aprobado".
+  const bandMsg =
+    res.band === "bajo"
+      ? "Excelente puntaje · alta probabilidad de aprobación"
+      : res.band === "medio"
+        ? "Buen puntaje · calificas para evaluación"
+        : "Puntaje en desarrollo · la empresa revisará tu caso";
+  const decisionCls = res.band === "alto" ? "no" : "ok";
+
+  // Recommended starter credit: a smaller amount and shorter term than asked.
+  const offer = recommendOffer(res.score, d.amount, d.termMonths);
+  const askedAmount = Number(d.amount) || 0;
+  const askedTerm = Number(d.termMonths) || 0;
+  const offerHTML = `
+    <div class="starter-offer">
+      <h3 class="starter-offer-title">Tu crédito recomendado para empezar</h3>
+      <div class="starter-offer-figures">
+        <div><span class="so-label">Monto sugerido</span><span class="so-val">${clp(offer.offerAmount)}</span></div>
+        <div><span class="so-label">Plazo sugerido</span><span class="so-val">${offer.offerTermMonths} meses</span></div>
+      </div>
+      <p class="starter-offer-note">${
+        offer.reduced
+          ? `Es un monto menor y un plazo más corto que lo que solicitaste (${clp(askedAmount)} a ${askedTerm} meses), pensado para partir con paso firme.`
+          : `Un primer crédito acotado para empezar a construir tu historial.`
+      }</p>
+      <p class="starter-offer-grow">📈 Al tomar este crédito y <strong>pagar tus cuotas a tiempo</strong>, tu score sube y en tu próxima solicitud podrás acceder a un monto mayor —hasta <strong>${clp(offer.nextAmount)}</strong>— y mejores condiciones.</p>
+    </div>`;
 
   // Every factor is shown: positive contributors in green with an "of max"
   // sub-label, zero-contribution factors dimmed so it's obvious which data
@@ -351,7 +381,8 @@ function resultHTML(d, res) {
             </div>
           </div>
           <div class="band-badge" style="background:${res.color}1a;color:${res.color}">${esc(res.bandLabel)}</div>
-          <p class="decision ${approved ? "ok" : "no"}">${approved ? "Crédito pre-aprobado" : "Necesitamos más datos para aprobar"}</p>
+          <p class="decision ${decisionCls}">${bandMsg}</p>
+          <p class="decision-sub">La decisión final la toma la empresa que otorga el crédito.</p>
           <div class="score-breakdown">
             <div><span class="sb-label">Base</span><span class="sb-val">300</span></div>
             <div><span class="sb-label">Puntos obtenidos</span><span class="sb-val">+${earned}</span></div>
@@ -367,6 +398,8 @@ function resultHTML(d, res) {
             <div><strong>Sesgo verificado.</strong> Este resultado se calculó sin usar tu género, comuna ni edad, y se auditó contra paridad de género y territorial.</div>
           </div>
 
+          ${offerHTML}
+
           <h3 class="factors-title">Qué influyó en tu score</h3>
           <ul class="factors">${factors}</ul>
 
@@ -376,6 +409,7 @@ function resultHTML(d, res) {
             <button type="button" class="btn btn-primary" data-act="send">Enviar a la empresa</button>
             <button type="button" class="btn btn-ghost" data-act="restart">Hacer otra simulación</button>
           </div>
+          <p class="send-note" id="send-note" hidden>Tu solicitud quedó <strong>pendiente</strong>. La empresa la revisará y decidirá si aprueba el crédito.</p>
         </div>
       </div>
     </div>`;
@@ -392,10 +426,11 @@ function drawGauge(root, score) {
 
 function buildConsultaRecord(d, res) {
   const id = "W" + Date.now().toString().slice(-7);
-  const approved = isApproved(res.score);
   const today = new Date().toISOString().slice(0, 10);
   const place = PLACES.find((p) => p.comuna === d.comuna) || {};
   const purpose = d.purpose === CUSTOM_PURPOSE ? d.purposeOther.trim() : d.purpose;
+  // New walk-in applications start PENDIENTE: the company decides whether to
+  // approve. We stash the requested terms so the loan can be built on approval.
   return {
     id,
     name: d.name,
@@ -413,17 +448,15 @@ function buildConsultaRecord(d, res) {
     },
     score: res.score,
     band: bandFor(res.score).key,
-    decision: approved ? "aprobado" : "rechazado",
-    estado: approved ? "al_dia" : "rechazado",
+    decision: "pendiente",
+    estado: "pendiente",
     consultaDate: today,
     walkIn: true,
-    loan: approved
-      ? {
-          amount: Number(d.amount), termMonths: Number(d.termMonths), rateMonthly: 0.03,
-          purpose, dateGranted: today, comisionApertura: Math.round(Number(d.amount) * 0.02),
-          cuotaAmount: Math.round((Number(d.amount) / Number(d.termMonths)) * 1.03),
-          cuotas: [], saldo: Number(d.amount), nextDueDate: today, daysLate: 0, mora90: false,
-        }
-      : null,
+    requested: {
+      amount: Number(d.amount),
+      termMonths: Number(d.termMonths),
+      purpose,
+    },
+    loan: null,
   };
 }

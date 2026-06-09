@@ -1,6 +1,6 @@
 // app.js — role-based router and application shell.
 
-import { loadDataset, saveDataset, resetDataset, addCustomer, updateCustomer, deleteCustomer } from "./data.js";
+import { loadDataset, saveDataset, resetDataset, addCustomer, updateCustomer, deleteCustomer, approveCustomer, rejectCustomer } from "./data.js";
 import { renderCustomer } from "./customer.js";
 import { renderDashboard } from "./dashboard.js";
 
@@ -57,6 +57,14 @@ function render() {
       },
       onDeleteCustomer: (cid) => {
         setCustomers(deleteCustomer(customers, cid));
+        dashboardApi && dashboardApi.refresh();
+      },
+      onApprove: (cid) => {
+        setCustomers(approveCustomer(customers, cid));
+        dashboardApi && dashboardApi.refresh();
+      },
+      onReject: (cid) => {
+        setCustomers(rejectCustomer(customers, cid));
         dashboardApi && dashboardApi.refresh();
       },
     });

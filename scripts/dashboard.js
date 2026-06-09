@@ -8,7 +8,7 @@ import { computeScore, explain } from "./scoring.js";
 const PAGE_SIZE = 8;
 
 export function renderDashboard(deps) {
-  const { getCustomers, onNuevaConsulta, onUpdateCustomer, onDeleteCustomer } = deps;
+  const { getCustomers, onNuevaConsulta, onUpdateCustomer, onDeleteCustomer, onApprove, onReject } = deps;
 
   const ui = {
     period: "mes",
@@ -60,6 +60,7 @@ export function renderDashboard(deps) {
         <div class="act-tools">
           <select id="act-filter" aria-label="Filtrar por estado">
             <option value="todos">Todos los estados</option>
+            <option value="pendiente">Pendiente</option>
             <option value="al_dia">Al día</option>
             <option value="en_mora">En mora</option>
             <option value="pagado">Pagado</option>
@@ -245,7 +246,7 @@ export function renderDashboard(deps) {
             <td>${esc(c.name)}${c.walkIn ? ' <span class="chip-pen">walk-in</span>' : ""}</td>
             <td class="mono">${esc(c.rut)}</td>
             <td><span class="score-pill ${c.band}">${c.score}</span></td>
-            <td>${c.decision === "aprobado" ? '<span class="badge ok">Aprobado</span>' : '<span class="badge no">Rechazado</span>'}</td>
+            <td>${c.decision === "aprobado" ? '<span class="badge ok">Aprobado</span>' : c.decision === "pendiente" ? '<span class="badge pending">Pendiente</span>' : '<span class="badge no">Rechazado</span>'}</td>
             <td>${c.loan ? clp(c.loan.amount) : "—"}</td>
           </tr>`
             )
@@ -311,6 +312,12 @@ export function renderDashboard(deps) {
     const full = computeScore(c.scoreInputs);
     const exp = explain(c.scoreInputs, full, c.name.split(" ")[0]);
     const loan = c.loan;
+    const isPending = c.decision === "pendiente";
+    const req = c.requested || {};
+    // For a pending case there is no loan yet, so show the REQUESTED terms.
+    const gAmount = loan ? clp(loan.amount) : isPending && req.amount ? clp(req.amount) + " <small>(solicitado)</small>" : "—";
+    const gTerm = loan ? loan.termMonths + " meses" : isPending && req.termMonths ? req.termMonths + " meses <small>(solicitado)</small>" : "—";
+    const gPurpose = loan ? esc(loan.purpose) : isPending && req.purpose ? esc(req.purpose) + " <small>(solicitado)</small>" : "—";
     const timeline = loan && loan.cuotas && loan.cuotas.length
       ? loan.cuotas
           .map(
@@ -341,19 +348,23 @@ export function renderDashboard(deps) {
 
         <p class="modal-explain">${esc(exp)} <span class="mini-verified">Sesgo verificado ✓</span></p>
 
+        ${isPending ? `<div class="pending-banner">Solicitud <strong>pendiente</strong> de aprobación. Revisa los datos y decide si otorgar el crédito solicitado.</div>` : ""}
+
         <div class="modal-grid">
-          <div><span class="ml">Monto prestado</span><span class="mv">${loan ? clp(loan.amount) : "—"}</span></div>
+          <div><span class="ml">${isPending ? "Monto solicitado" : "Monto prestado"}</span><span class="mv">${gAmount}</span></div>
           <div><span class="ml">Saldo</span><span class="mv">${loan ? clp(loan.saldo) : "—"}</span></div>
-          <div><span class="ml">Tasa mensual</span><span class="mv">${loan ? pct(loan.rateMonthly) : "—"}</span></div>
-          <div><span class="ml">Plazo</span><span class="mv">${loan ? loan.termMonths + " meses" : "—"}</span></div>
+          <div><span class="ml">Tasa mensual</span><span class="mv">${loan ? pct(loan.rateMonthly) : isPending ? "3,0% <small>(estimada)</small>" : "—"}</span></div>
+          <div><span class="ml">Plazo</span><span class="mv">${gTerm}</span></div>
           <div><span class="ml">Próxima cuota</span><span class="mv">${loan && loan.nextDueDate ? fmtDate(loan.nextDueDate) : "—"}</span></div>
-          <div><span class="ml">Propósito</span><span class="mv">${loan ? esc(loan.purpose) : "—"}</span></div>
+          <div><span class="ml">Propósito</span><span class="mv">${gPurpose}</span></div>
         </div>
 
         <h3 class="timeline-title">Historial de pagos</h3>
         <ul class="timeline">${timeline}</ul>
 
         <div class="modal-actions">
+          ${isPending ? `<button class="btn btn-primary btn-sm" id="btn-approve">Aprobar crédito</button>
+          <button class="btn btn-danger btn-sm" id="btn-reject">Rechazar</button>` : ""}
           <button class="btn btn-ghost btn-sm" id="btn-edit">Editar datos</button>
           <button class="btn btn-danger btn-sm" id="btn-delete">Eliminar cliente</button>
         </div>
@@ -361,6 +372,10 @@ export function renderDashboard(deps) {
       modal.querySelector(".modal-close").addEventListener("click", close);
       modal.querySelector("#btn-edit").addEventListener("click", renderEdit);
       modal.querySelector("#btn-delete").addEventListener("click", renderDeleteConfirm);
+      if (isPending) {
+        modal.querySelector("#btn-approve").addEventListener("click", () => { onApprove?.(id); close(); });
+        modal.querySelector("#btn-reject").addEventListener("click", () => { onReject?.(id); close(); });
+      }
       modal.querySelector(".modal-close").focus();
     }
 
@@ -368,7 +383,7 @@ export function renderDashboard(deps) {
       const comunaOpts = PLACES.map(
         (p) => `<option value="${esc(p.comuna)}" ${p.comuna === c.comuna ? "selected" : ""}>${esc(p.comuna)} (${esc(p.region)})</option>`
       ).join("");
-      const estadoOpts = ["al_dia", "en_mora", "pagado", "rechazado"]
+      const estadoOpts = ["pendiente", "al_dia", "en_mora", "pagado", "rechazado"]
         .map((s) => `<option value="${s}" ${s === c.estado ? "selected" : ""}>${esc(estadoLabels[s])}</option>`)
         .join("");
       modal.innerHTML = `
@@ -565,7 +580,7 @@ function deltaChip(d, goodWhenUp) {
   return `<span class="delta ${good ? "good" : "bad"}">${arrow} ${pct(Math.abs(d.relPct), 0)} vs período anterior</span>`;
 }
 function estadoBadge(estado) {
-  const cls = { al_dia: "ok", en_mora: "no", pagado: "neutral", rechazado: "muted" }[estado] || "muted";
+  const cls = { pendiente: "pending", al_dia: "ok", en_mora: "no", pagado: "neutral", rechazado: "muted" }[estado] || "muted";
   return `<span class="badge ${cls}">${esc(estadoLabels[estado] || estado)}</span>`;
 }
 function cuotaLabel(s) {

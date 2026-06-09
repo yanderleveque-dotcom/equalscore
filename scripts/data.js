@@ -287,6 +287,34 @@ export function deleteCustomer(customers, id) {
   return next;
 }
 
+/**
+ * Company approves a pending walk-in: materialise a real loan from the terms the
+ * client requested, mark it al día. Deterministic — no RNG needed for a brand
+ * new (al_dia) loan since none of its cuotas are past due yet.
+ */
+export function approveCustomer(customers, id) {
+  const c = customers.find((x) => x.id === id);
+  if (!c) return customers;
+  const req = c.requested || {};
+  const amount = Math.max(0, Number(req.amount) || 0);
+  const termMonths = Number(req.termMonths) || 12;
+  const today = iso(TODAY);
+  const loan = buildLoan(() => 0, {
+    amount,
+    termMonths,
+    rateMonthly: 0.03,
+    purpose: req.purpose || "",
+    dateGranted: today,
+    estado: "al_dia",
+  });
+  return updateCustomer(customers, id, { decision: "aprobado", estado: "al_dia", loan });
+}
+
+/** Company rejects a pending walk-in: no loan is created. */
+export function rejectCustomer(customers, id) {
+  return updateCustomer(customers, id, { decision: "rechazado", estado: "rechazado", loan: null });
+}
+
 // ---- Derived statistics ----------------------------------------------------
 function periodWindows(period) {
   const days = period === "semana" ? 7 : 30;
@@ -500,6 +528,7 @@ function fairness(customers) {
 }
 
 export const estadoLabels = {
+  pendiente: "Pendiente",
   al_dia: "Al día",
   en_mora: "En mora",
   pagado: "Pagado",

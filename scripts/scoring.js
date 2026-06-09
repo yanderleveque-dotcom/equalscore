@@ -140,6 +140,44 @@ export function isApproved(score) {
   return score >= 600;
 }
 
+const STD_TERMS = [6, 9, 12, 18, 24, 36];
+
+/**
+ * Recommended "starter" credit for the applicant: deterministically a SMALLER
+ * amount and a SHORTER term than what they requested, sized by score band. The
+ * idea we surface to the client is that taking a conservative first credit and
+ * paying it on time raises their score, unlocking a larger amount next time.
+ *
+ * Returns { offerAmount, offerTermMonths, nextAmount, reduced } where
+ * `reduced` is true when the offer is actually smaller/shorter than requested.
+ */
+export function recommendOffer(score, requestedAmount, requestedTermMonths) {
+  const amount = Math.max(0, Number(requestedAmount) || 0);
+  const term = Math.max(1, Number(requestedTermMonths) || 12);
+
+  // Lower band => more conservative starter offer.
+  let amountFactor, termFactor;
+  if (score >= 720) { amountFactor = 0.8; termFactor = 0.75; }
+  else if (score >= 600) { amountFactor = 0.6; termFactor = 0.6; }
+  else { amountFactor = 0.4; termFactor = 0.5; }
+
+  // Amount: round DOWN to nearest 50.000 CLP, floor 100.000, never above asked.
+  let offerAmount = Math.floor((amount * amountFactor) / 50000) * 50000;
+  offerAmount = Math.max(100000, offerAmount);
+  if (amount > 0 && offerAmount > amount) offerAmount = amount;
+
+  // Term: nearest standard term not exceeding our shortened cap, min 6 meses.
+  const cap = Math.max(6, Math.round(term * termFactor));
+  let offerTermMonths = STD_TERMS.filter((t) => t <= cap).pop() || 6;
+  if (offerTermMonths > term) offerTermMonths = term;
+
+  // Motivating "next level" amount (≈1.6×), rounded to 50.000.
+  const nextAmount = Math.round((offerAmount * 1.6) / 50000) * 50000;
+
+  const reduced = offerAmount < amount || offerTermMonths < term;
+  return { offerAmount, offerTermMonths, nextAmount, reduced };
+}
+
 function workLabel(w) {
   return (
     {

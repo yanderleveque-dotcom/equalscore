@@ -35,6 +35,7 @@ export function renderDashboard(deps) {
         <button data-period="mes" class="is-active">Mes</button>
       </div>
     </div>
+    <div id="pending-cta" hidden></div>
     <div id="kpis" class="kpi-grid"></div>
 
     <div class="charts-grid">
@@ -98,11 +99,49 @@ export function renderDashboard(deps) {
 
   // ---- renders ----
   function renderAll() {
+    renderPendingCta();
     renderKpis();
     renderFairness();
     renderSearch();
     renderActivity();
     renderCharts();
+  }
+
+  // Prominent call-to-action that surfaces brand-new customer applications still
+  // waiting for a decision and jumps the company straight to them.
+  function renderPendingCta() {
+    const el = root.querySelector("#pending-cta");
+    if (!el) return;
+    const pending = getCustomers().filter((c) => c.decision === "pendiente");
+    if (!pending.length) {
+      el.hidden = true;
+      el.innerHTML = "";
+      return;
+    }
+    el.hidden = false;
+    const n = pending.length;
+    el.innerHTML = `
+      <div class="pending-cta">
+        <div class="pending-cta-info">
+          <span class="pending-cta-count">${n}</span>
+          <div>
+            <p class="pending-cta-title">${n === 1 ? "Tienes 1 solicitud nueva por revisar" : `Tienes ${n} solicitudes nuevas por revisar`}</p>
+            <p class="pending-cta-sub">Cada una espera tu decisión: aprobar o rechazar el crédito solicitado.</p>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-go-pending">Revisar solicitudes pendientes →</button>
+      </div>`;
+    el.querySelector("#btn-go-pending").addEventListener("click", goToPending);
+  }
+
+  function goToPending() {
+    ui.actFilter = "pendiente";
+    ui.page = 1;
+    const sel = root.querySelector("#act-filter");
+    if (sel) sel.value = "pendiente";
+    renderActivity();
+    const act = root.querySelector("#activity");
+    if (act) act.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   function renderKpis() {
@@ -311,6 +350,44 @@ export function renderDashboard(deps) {
     if (!c) return;
     const full = computeScore(c.scoreInputs);
     const exp = explain(c.scoreInputs, full, c.name.split(" ")[0]);
+
+    // ---- "Por qué este score" breakdown -------------------------------------
+    // A per-person explanation: which factors built the score, how many points
+    // each contributed (vs its ceiling), and how their existing-credit situation
+    // moved the score up or down.
+    const firstName = esc(c.name.split(" ")[0]);
+    const factors = full.factors || [];
+    const factorsHTML = factors
+      .map((f) => {
+        const wpct = f.max ? Math.max(2, Math.round((f.points / f.max) * 100)) : 0;
+        return `<li class="score-factor ${f.positive ? "pos" : "neg"}">
+          <div class="sf-row"><span class="sf-label">${esc(f.label)}</span><span class="sf-pts">${f.points} / ${f.max} pts</span></div>
+          <div class="sf-bar"><span style="width:${wpct}%"></span></div>
+          ${f.tip ? `<p class="sf-tip">${esc(f.tip)}</p>` : ""}
+        </li>`;
+      })
+      .join("");
+
+    const cr = full.credit || {};
+    const creditLines = [];
+    if (cr.openCredits > 0) {
+      creditLines.push(
+        `Tiene <strong>${cr.openCredits}</strong> ${cr.openCredits === 1 ? "crédito abierto" : "créditos abiertos"} por un total de <strong>${clp(cr.openDebt)}</strong>${cr.debtPenalty ? `, lo que resta <strong>−${cr.debtPenalty} pts</strong> por riesgo de endeudamiento` : ""}.`
+      );
+    } else {
+      creditLines.push(`No registra créditos abiertos, así que no hay penalización por deuda vigente.`);
+    }
+    if (cr.repaidOnTime > 0) {
+      creditLines.push(
+        `Pagó <strong>${cr.repaidOnTime}</strong> ${cr.repaidOnTime === 1 ? "crédito anterior" : "créditos anteriores"} a tiempo, sumando <strong>+${cr.historyBonus} pts</strong> por buen historial de pago.`
+      );
+    } else {
+      creditLines.push(`Aún no registra créditos previos pagados a tiempo; pagar puntualmente sumaría puntos a futuro.`);
+    }
+    const creditAdjTotal = (cr.historyBonus || 0) - (cr.debtPenalty || 0);
+    const adjClass = creditAdjTotal > 0 ? "pos" : creditAdjTotal < 0 ? "neg" : "neutral";
+    const adjLabel = creditAdjTotal > 0 ? `+${creditAdjTotal} pts` : creditAdjTotal < 0 ? `${creditAdjTotal} pts` : "0 pts";
+
     const loan = c.loan;
     const isPending = c.decision === "pendiente";
     const req = c.requested || {};
@@ -349,6 +426,14 @@ export function renderDashboard(deps) {
         <p class="modal-explain">${esc(exp)} <span class="mini-verified">Sesgo verificado ✓</span></p>
 
         ${isPending ? `<div class="pending-banner">Solicitud <strong>pendiente</strong> de aprobación. Revisa los datos y decide si otorgar el crédito solicitado.</div>` : ""}
+
+        <h3 class="score-why-title">Por qué ${firstName} tiene este score</h3>
+        <p class="score-why-intro">Partimos de una base de 300 puntos y sumamos señales de comportamiento y financieras —nunca género, comuna ni edad—. Así se reparten los puntos (máximo 850):</p>
+        <ul class="score-factors">${factorsHTML}</ul>
+        <div class="score-credit">
+          <div class="score-credit-head"><span>Situación de crédito</span><span class="credit-adj ${adjClass}">${adjLabel}</span></div>
+          ${creditLines.map((l) => `<p>${l}</p>`).join("")}
+        </div>
 
         <div class="modal-grid">
           <div><span class="ml">${isPending ? "Monto solicitado" : "Monto prestado"}</span><span class="mv">${gAmount}</span></div>

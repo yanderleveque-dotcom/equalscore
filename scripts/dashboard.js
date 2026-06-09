@@ -2,13 +2,13 @@
 
 import { clp, num, pct, fmtDate, esc, normalize, daysBetween } from "./utils.js";
 import { cleanRut } from "./rut.js";
-import { computeStats, estadoLabels } from "./data.js";
-import { explain } from "./scoring.js";
+import { computeStats, estadoLabels, PLACES } from "./data.js";
+import { computeScore, explain } from "./scoring.js";
 
 const PAGE_SIZE = 8;
 
 export function renderDashboard(deps) {
-  const { getCustomers, onNuevaConsulta } = deps;
+  const { getCustomers, onNuevaConsulta, onUpdateCustomer, onDeleteCustomer } = deps;
 
   const ui = {
     period: "mes",
@@ -40,8 +40,8 @@ export function renderDashboard(deps) {
     <div class="charts-grid">
       <div class="panel"><h2>Monto prestado por semana</h2><div class="chart-box"><canvas id="ch-monto"></canvas></div></div>
       <div class="panel"><h2>Ingresos por semana</h2><div class="chart-box"><canvas id="ch-rev"></canvas></div></div>
-      <div class="panel"><h2>Pagadores vs no pagadores</h2><div class="chart-box"><canvas id="ch-pag"></canvas></div></div>
-      <div class="panel"><h2>Evolución de la tasa de mora</h2><div class="chart-box"><canvas id="ch-mora"></canvas></div></div>
+      <div class="panel"><h2>Pagadores vs no pagadores</h2><div class="chart-box"><canvas id="ch-pag"></canvas></div><p class="chart-caption" id="cap-pag"></p></div>
+      <div class="panel"><h2>Evolución de la tasa de mora</h2><div class="chart-box"><canvas id="ch-mora"></canvas></div><p class="chart-caption" id="cap-mora"></p></div>
     </div>
 
     <div class="panel fairness" id="fairness"></div>
@@ -308,7 +308,8 @@ export function renderDashboard(deps) {
   function openDetail(id) {
     const c = getCustomers().find((x) => x.id === id);
     if (!c) return;
-    const exp = explain(c.scoreInputs, { score: c.score, bandLabel: bandLabelFor(c.band) }, c.name.split(" ")[0]);
+    const full = computeScore(c.scoreInputs);
+    const exp = explain(c.scoreInputs, full, c.name.split(" ")[0]);
     const loan = c.loan;
     const timeline = loan && loan.cuotas && loan.cuotas.length
       ? loan.cuotas
@@ -320,13 +321,17 @@ export function renderDashboard(deps) {
 
     const modal = document.createElement("div");
     modal.className = "modal-overlay";
-    modal.innerHTML = `
+    const close = () => modal.remove();
+
+    function renderView() {
+      modal.innerHTML = `
       <div class="modal" role="dialog" aria-modal="true" aria-label="Detalle de ${esc(c.name)}">
         <button class="modal-close" aria-label="Cerrar">×</button>
         <div class="modal-head">
           <div>
             <h2>${esc(c.name)}</h2>
             <p class="modal-meta">${esc(c.rut)} · ${esc(c.comuna)}, ${esc(c.region)}${c.age ? " · " + c.age + " años" : ""}</p>
+            <p class="modal-meta">${esc(c.email || "")}${c.phone ? " · " + esc(c.phone) : ""}</p>
           </div>
           <div class="modal-score">
             <span class="score-pill ${c.band} big">${c.score}</span>
@@ -340,20 +345,107 @@ export function renderDashboard(deps) {
           <div><span class="ml">Monto prestado</span><span class="mv">${loan ? clp(loan.amount) : "—"}</span></div>
           <div><span class="ml">Saldo</span><span class="mv">${loan ? clp(loan.saldo) : "—"}</span></div>
           <div><span class="ml">Tasa mensual</span><span class="mv">${loan ? pct(loan.rateMonthly) : "—"}</span></div>
-          <div><span class="ml">Plazo</span><span class="mv">${loan ? loan.termMonths + " meses" : "—"}</span></div>
+          <div><span class="ml">Plazo</span><span class="mv">${loan ? termLabelDetail(loan.termMonths) : "—"}</span></div>
           <div><span class="ml">Próxima cuota</span><span class="mv">${loan && loan.nextDueDate ? fmtDate(loan.nextDueDate) : "—"}</span></div>
           <div><span class="ml">Propósito</span><span class="mv">${loan ? esc(loan.purpose) : "—"}</span></div>
         </div>
 
         <h3 class="timeline-title">Historial de pagos</h3>
         <ul class="timeline">${timeline}</ul>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost btn-sm" id="btn-edit">Editar datos</button>
+          <button class="btn btn-danger btn-sm" id="btn-delete">Eliminar cliente</button>
+        </div>
       </div>`;
-    const close = () => modal.remove();
+      modal.querySelector(".modal-close").addEventListener("click", close);
+      modal.querySelector("#btn-edit").addEventListener("click", renderEdit);
+      modal.querySelector("#btn-delete").addEventListener("click", renderDeleteConfirm);
+      modal.querySelector(".modal-close").focus();
+    }
+
+    function renderEdit() {
+      const comunaOpts = PLACES.map(
+        (p) => `<option value="${esc(p.comuna)}" ${p.comuna === c.comuna ? "selected" : ""}>${esc(p.comuna)} (${esc(p.region)})</option>`
+      ).join("");
+      const estadoOpts = ["al_dia", "en_mora", "pagado", "rechazado"]
+        .map((s) => `<option value="${s}" ${s === c.estado ? "selected" : ""}>${esc(estadoLabels[s])}</option>`)
+        .join("");
+      modal.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Editar ${esc(c.name)}">
+        <button class="modal-close" aria-label="Cerrar">×</button>
+        <div class="modal-head"><div><h2>Editar cliente</h2><p class="modal-meta">${esc(c.rut)}</p></div></div>
+        <form id="edit-form" class="edit-form">
+          <label class="ef-field"><span>Nombre</span><input type="text" name="name" value="${esc(c.name)}" required /></label>
+          <label class="ef-field"><span>Email</span><input type="email" name="email" value="${esc(c.email || "")}" /></label>
+          <label class="ef-field"><span>Teléfono</span><input type="text" name="phone" value="${esc(c.phone || "")}" /></label>
+          <label class="ef-field"><span>Comuna</span><select name="comuna">${comunaOpts}</select></label>
+          <label class="ef-field"><span>Estado</span><select name="estado">${estadoOpts}</select></label>
+          <label class="ef-field"><span>Monto del préstamo</span><input type="number" name="amount" min="0" step="10000" value="${loan ? loan.amount : ""}" ${loan ? "" : "disabled"} /></label>
+          <p class="edit-err" id="edit-err" role="alert" hidden></p>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-cancel">Cancelar</button>
+            <button type="submit" class="btn btn-primary btn-sm">Guardar cambios</button>
+          </div>
+        </form>
+      </div>`;
+      modal.querySelector(".modal-close").addEventListener("click", close);
+      modal.querySelector("#btn-cancel").addEventListener("click", renderView);
+      modal.querySelector("#edit-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const name = String(fd.get("name") || "").trim();
+        if (!name) return showEditErr("El nombre es obligatorio.");
+        const comunaName = String(fd.get("comuna"));
+        const place = PLACES.find((p) => p.comuna === comunaName) || { region: c.region, penalized: c.penalizedComuna };
+        const patch = {
+          name,
+          email: String(fd.get("email") || "").trim(),
+          phone: String(fd.get("phone") || "").trim(),
+          comuna: comunaName,
+          region: place.region,
+          penalizedComuna: place.penalized,
+          estado: String(fd.get("estado")),
+        };
+        if (loan) {
+          const amt = Math.max(0, Math.round(Number(fd.get("amount")) || 0));
+          patch.loan = { ...loan, amount: amt };
+        }
+        onUpdateCustomer?.(id, patch);
+        close();
+      });
+      modal.querySelector('input[name="name"]').focus();
+    }
+
+    function showEditErr(msg) {
+      const el = modal.querySelector("#edit-err");
+      if (el) { el.textContent = msg; el.hidden = false; }
+    }
+
+    function renderDeleteConfirm() {
+      modal.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Eliminar ${esc(c.name)}">
+        <button class="modal-close" aria-label="Cerrar">×</button>
+        <div class="modal-head"><div><h2>Eliminar cliente</h2></div></div>
+        <p class="confirm-text">¿Seguro que quieres eliminar a <strong>${esc(c.name)}</strong> (${esc(c.rut)})? Esta acción no se puede deshacer.</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost btn-sm" id="btn-cancel-del">Cancelar</button>
+          <button class="btn btn-danger btn-sm" id="btn-confirm-del">Sí, eliminar</button>
+        </div>
+      </div>`;
+      modal.querySelector(".modal-close").addEventListener("click", close);
+      modal.querySelector("#btn-cancel-del").addEventListener("click", renderView);
+      modal.querySelector("#btn-confirm-del").addEventListener("click", () => {
+        onDeleteCustomer?.(id);
+        close();
+      });
+      modal.querySelector("#btn-confirm-del").focus();
+    }
+
     modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
-    modal.querySelector(".modal-close").addEventListener("click", close);
     document.addEventListener("keydown", function onEsc(e) { if (e.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); } });
+    renderView();
     root.querySelector("#modal-root").appendChild(modal);
-    modal.querySelector(".modal-close").focus();
   }
 
   // ---- charts ----
@@ -380,26 +472,72 @@ export function renderDashboard(deps) {
       data: { labels, datasets: [{ label: "Ingresos", data: stats.series.map((w) => w.revenue), borderColor: violet, backgroundColor: "rgba(139,92,246,.15)", fill: true, tension: 0.35, pointRadius: 3 }] },
       options: baseOpts((v) => clp(v)),
     });
+    // Pagadores vs no pagadores: counts, with each group's loaned amount and a
+    // tooltip that shows count, share % and money. A caption restates it in text.
+    const allLoans = getCustomers().filter((c) => c.loan);
+    const pagSet = allLoans.filter((c) => c.estado === "al_dia" || c.estado === "pagado");
+    const noPagSet = allLoans.filter((c) => c.estado === "en_mora");
+    const pagCount = pagSet.length;
+    const noPagCount = noPagSet.length;
+    const totPag = pagCount + noPagCount;
+    const montoPag = pagSet.reduce((s, c) => s + c.loan.amount, 0);
+    const montoNoPag = noPagSet.reduce((s, c) => s + c.loan.amount, 0);
+    const montos = [montoPag, montoNoPag];
+
     charts.pag = new Chart(root.querySelector("#ch-pag"), {
       type: "doughnut",
       data: {
         labels: ["Pagadores", "No pagadores"],
-        datasets: [{ data: [stats.book.pagadores, stats.book.noPagadores], backgroundColor: ["#059669", "#DC2626"], borderWidth: 0 }],
+        datasets: [{ data: [pagCount, noPagCount], backgroundColor: ["#059669", "#DC2626"], borderWidth: 0 }],
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "bottom" },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const val = ctx.parsed;
+                const p = totPag ? Math.round((val / totPag) * 100) : 0;
+                return ` ${ctx.label}: ${val} (${p}%)`;
+              },
+              afterLabel: (ctx) => " Monto: " + clp(montos[ctx.dataIndex]),
+            },
+          },
+        },
+      },
     });
+    const pPag = totPag ? Math.round((pagCount / totPag) * 100) : 0;
+    const pNo = totPag ? 100 - pPag : 0;
+    const capPag = root.querySelector("#cap-pag");
+    if (capPag) {
+      capPag.innerHTML = `<span class="cap-ok">Pagadores: <strong>${pagCount}</strong> (${pPag}%) · ${clp(montoPag)}</span><span class="cap-no">No pagadores: <strong>${noPagCount}</strong> (${pNo}%) · ${clp(montoNoPag)}</span>`;
+    }
+
+    // Evolución de la tasa de mora: cumulative portfolio mora rate over 12 months.
+    const ms = stats.moraSeries;
     charts.mora = new Chart(root.querySelector("#ch-mora"), {
       type: "line",
-      data: { labels, datasets: [{ label: "Tasa de mora", data: stats.series.map((w) => +(w.moraRate * 100).toFixed(1)), borderColor: "#DC2626", backgroundColor: "rgba(220,38,38,.12)", fill: true, tension: 0.35, pointRadius: 3 }] },
-      options: baseOpts((v) => v + "%"),
+      data: { labels: ms.map((p) => p.label), datasets: [{ label: "Tasa de mora", data: ms.map((p) => +(p.moraRate * 100).toFixed(1)), borderColor: "#DC2626", backgroundColor: "rgba(220,38,38,.12)", fill: true, tension: 0.35, pointRadius: 3 }] },
+      options: baseOpts((v) => v + "%", ms.map((p) => `${p.mora} en mora / ${p.active} activos`)),
     });
+    const last = ms[ms.length - 1];
+    const capMora = root.querySelector("#cap-mora");
+    if (capMora && last) {
+      capMora.textContent = `Hoy: ${(last.moraRate * 100).toFixed(1)}% de mora — ${last.mora} no pagan de ${last.active} créditos activos.`;
+    }
   }
 
-  function baseOpts(fmt) {
+  function baseOpts(fmt, afterLabels) {
+    const callbacks = { label: (ctx) => " " + fmt(ctx.parsed.y) };
+    if (Array.isArray(afterLabels)) {
+      callbacks.afterLabel = (ctx) => (afterLabels[ctx.dataIndex] ? " " + afterLabels[ctx.dataIndex] : "");
+    }
     return {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => " " + fmt(ctx.parsed.y) } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks } },
       scales: {
         x: { grid: { display: false } },
         y: { beginAtZero: true, ticks: { callback: (v) => fmt(v) }, grid: { color: "#EDE9FE" } },
@@ -440,6 +578,10 @@ function parityBadge(state, gap) {
 }
 function bandLabelFor(band) {
   return { bajo: "Riesgo bajo", medio: "Riesgo medio", alto: "Riesgo alto" }[band] || "";
+}
+function termLabelDetail(m) {
+  if (m % 12 === 0 && m >= 24) return `${m} meses (${m / 12} años)`;
+  return `${m} meses`;
 }
 function sortVal(c, key) {
   if (key === "monto") return c.loan ? c.loan.amount : -1;

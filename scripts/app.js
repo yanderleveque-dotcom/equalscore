@@ -1,6 +1,6 @@
 // app.js — role-based router and application shell.
 
-import { loadDataset, saveDataset, resetDataset, addCustomer } from "./data.js";
+import { loadDataset, saveDataset, resetDataset, addCustomer, updateCustomer, deleteCustomer } from "./data.js";
 import { renderCustomer } from "./customer.js";
 import { renderDashboard } from "./dashboard.js";
 
@@ -48,7 +48,18 @@ function render() {
       })
     );
   } else if (view === "dashboard") {
-    const api = renderDashboard({ getCustomers, onNuevaConsulta: openNuevaConsulta });
+    const api = renderDashboard({
+      getCustomers,
+      onNuevaConsulta: openNuevaConsulta,
+      onUpdateCustomer: (cid, patch) => {
+        setCustomers(updateCustomer(customers, cid, patch));
+        dashboardApi && dashboardApi.refresh();
+      },
+      onDeleteCustomer: (cid) => {
+        setCustomers(deleteCustomer(customers, cid));
+        dashboardApi && dashboardApi.refresh();
+      },
+    });
     dashboardApi = api;
     main.appendChild(api.root);
   } else {

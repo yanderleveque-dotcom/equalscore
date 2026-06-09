@@ -36,6 +36,8 @@ h1,h2,h3{letter-spacing:-.02em;line-height:1.15}
 .btn-ghost:hover{background:var(--lav-50)}
 .btn-ghost:disabled{opacity:.5;cursor:default;transform:none}
 .btn-sm{padding:8px 14px;font-size:.88rem}
+.btn-danger{background:#fff;color:#B91C1C;border-color:#FCA5A5}
+.btn-danger:hover{background:#FEF2F2;border-color:#F87171}
 
 /* ---- Header ---- */
 .app-header{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.9);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
@@ -132,9 +134,31 @@ output{color:var(--indigo-700);font-weight:700}
 .bias-verified svg{width:26px;height:26px;flex-shrink:0;color:var(--green)}
 .factors-title{font-size:1.05rem;margin:20px 0 10px}
 .factors{list-style:none;padding:0;display:grid;gap:8px}
-.factors li{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;font-size:.92rem;color:var(--slate)}
-.factor-pts{font-weight:800;color:var(--indigo-700);font-variant-numeric:tabular-nums;min-width:42px}
+.factors li{display:flex;align-items:flex-start;gap:12px;background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;font-size:.92rem;color:var(--slate)}
+.factor-pts{font-weight:800;color:var(--indigo-700);font-variant-numeric:tabular-nums;min-width:46px}
 .factors li.pos .factor-pts{color:var(--green)}
+.factor-body{display:flex;flex-direction:column;gap:2px}
+.factor-label{line-height:1.35}
+.factor-of-max{font-size:.76rem;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+.factor-zero-pts{font-size:.76rem;color:var(--muted)}
+.factors li.zero{background:var(--bg-soft);border-style:dashed;color:var(--muted)}
+.factors li.zero .factor-pts{color:var(--muted)}
+
+/* score breakdown in the gauge card */
+.score-breakdown{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:grid;gap:7px;text-align:left}
+.score-breakdown>div{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:.84rem}
+.sb-label{color:var(--slate)}
+.sb-val{font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink)}
+
+/* "cómo mejorar" prioritised tips */
+.improvements{margin-top:20px;background:var(--amber-50);border:1px solid #FDE68A;border-radius:var(--radius-sm);padding:16px}
+.improvements-title{font-size:1.02rem;margin-bottom:12px;color:#92400E}
+.improvements ul{list-style:none;padding:0;display:grid;gap:10px}
+.improvement-item{display:flex;align-items:flex-start;gap:12px;font-size:.9rem;color:var(--slate)}
+.improvement-gain{flex-shrink:0;font-weight:800;font-size:.78rem;color:#92400E;background:#FDE68A;padding:3px 9px;border-radius:999px;font-variant-numeric:tabular-nums;min-width:58px;text-align:center}
+.improvement-tip{line-height:1.4}
+.all-max-note{margin-top:20px;background:var(--green-50);border:1px solid #A7F3D0;color:#065F46;border-radius:var(--radius-sm);padding:14px 16px;font-weight:600;font-size:.92rem}
+
 .result-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:22px}
 .is-sent{background:var(--green)!important;border-color:var(--green)!important}
 
@@ -236,6 +260,23 @@ output{color:var(--indigo-700);font-weight:700}
 .cuota.pagada{background:var(--green-50)}.cuota.pagada .cuota-status{color:var(--green)}
 .cuota.pendiente .cuota-status{color:var(--muted)}
 .cuota.atrasada{background:var(--red-50)}.cuota.atrasada .cuota-status{color:var(--red)}
+
+/* ---- Modal actions + edit form ---- */
+.modal-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.edit-form{display:grid;gap:12px;margin-top:8px}
+@media(min-width:520px){.edit-form{grid-template-columns:1fr 1fr}.edit-form .modal-actions,.edit-form .edit-err{grid-column:1 / -1}}
+.ef-field{display:flex;flex-direction:column;gap:5px;font-size:.82rem;font-weight:600;color:var(--muted)}
+.ef-field input,.ef-field select{font:inherit;color:var(--ink);font-weight:500;padding:9px 11px;border:1.5px solid var(--lavender);border-radius:var(--radius-sm);background:#fff}
+.ef-field input:focus,.ef-field select:focus{outline:none;border-color:var(--violet-500)}
+.ef-field input:disabled{background:var(--bg-soft);color:var(--muted)}
+.edit-err{color:var(--red);font-size:.84rem;font-weight:600;margin:0}
+.confirm-text{margin:10px 0;color:var(--ink);line-height:1.5}
+
+/* ---- Chart captions ---- */
+.chart-caption{display:flex;flex-wrap:wrap;gap:6px 14px;margin:10px 2px 0;font-size:.82rem;color:var(--muted);line-height:1.4}
+.chart-caption strong{font-variant-numeric:tabular-nums}
+.cap-ok{color:var(--green);font-weight:600}
+.cap-no{color:var(--red);font-weight:600}
 
 /* ---- Footer ---- */
 .app-footer{background:var(--ink);color:#fff;padding:28px 20px;margin-top:30px}

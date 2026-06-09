@@ -1,11 +1,33 @@
 // customer.js — multi-step credit application + assessment result.
 
 import { esc, clp, num } from "./utils.js";
-import { isValidRut, formatRut } from "./rut.js";
+import { isValidRut, formatRut, formatRutInput } from "./rut.js";
 import { PLACES, REGIONS } from "./data.js";
 import { computeScore, explain, bandFor, isApproved } from "./scoring.js";
 
 const STEPS = ["Datos personales", "Situación laboral", "Datos alternativos", "Crédito solicitado"];
+
+// Loan term options in months, from 6 months up to 30 years (360 months).
+const TERM_OPTIONS = [6, 9, 12, 18, 24, 36, 48, 60, 72, 84, 96, 120, 180, 240, 300, 360];
+function termLabel(m) {
+  if (m % 12 === 0 && m >= 24) {
+    const y = m / 12;
+    return `${m} meses (${y} ${y === 1 ? "año" : "años"})`;
+  }
+  return `${m} meses`;
+}
+
+const PURPOSE_OPTIONS = [
+  "Capital de trabajo",
+  "Comprar departamento",
+  "Comprar casa",
+  "Emergencia médica",
+  "Educación",
+  "Mejoras del hogar",
+  "Compra de herramientas",
+  "Consolidar deudas",
+];
+const CUSTOM_PURPOSE = "__custom__";
 
 export function renderCustomer(onSubmitConsulta) {
   const state = {
@@ -15,7 +37,7 @@ export function renderCustomer(onSubmitConsulta) {
       workType: "", income: "", tenureMonths: "",
       utilityMonths: 18, openBanking: false, appUsage: "media", phoneAuthorized: false,
       consentUtility: false, consentOB: false, consentApps: false, consentPhone: false,
-      amount: "", termMonths: "12", purpose: "", consentFinal: false,
+      amount: "", termMonths: "12", purpose: "", purposeOther: "", consentFinal: false,
     },
     result: null,
   };
@@ -68,12 +90,19 @@ export function renderCustomer(onSubmitConsulta) {
       const evt = inp.type === "checkbox" || inp.tagName === "SELECT" || inp.type === "range" ? "input" : "input";
       inp.addEventListener(evt, () => {
         if (inp.type === "checkbox") setField(key, inp.checked);
-        else setField(key, inp.value);
+        else if (key === "rut") {
+          // Live-format into canonical RUT form, preserving caret at the end.
+          const formatted = formatRutInput(inp.value);
+          inp.value = formatted;
+          inp.setSelectionRange(formatted.length, formatted.length);
+          setField(key, formatted);
+        } else setField(key, inp.value);
         if (inp.type === "range") {
           const out = form.querySelector(`#out-${key}`);
           if (out) out.textContent = inp.value;
         }
         if (key === "region") rebuildComunas(form);
+        if (key === "purpose") render(); // reveal/hide the custom-purpose field
       });
     });
     // simulated connect toggles
@@ -146,6 +175,7 @@ export function renderCustomer(onSubmitConsulta) {
     } else if (state.step === 3) {
       if (d.amount === "" || Number(d.amount) <= 0) return set("Ingresa el monto que necesitas.");
       if (!d.purpose) return set("Selecciona el propósito del crédito.");
+      if (d.purpose === CUSTOM_PURPOSE && !d.purposeOther.trim()) return set("Especifica el propósito del crédito.");
       if (!d.consentFinal) return set("Debes autorizar la evaluación para continuar.");
     }
     return true;
@@ -261,12 +291,14 @@ function step4(d) {
   return `<fieldset><legend>Crédito solicitado</legend>
     <div class="grid-2">
       ${field("Monto (CLP)", `<input type="number" data-field="amount" value="${esc(d.amount)}" min="0" step="50000" placeholder="800000" />`)}
-      ${field("Plazo (meses)", `<select data-field="termMonths">${[6, 9, 12, 18, 24, 36].map((m) => `<option value="${m}" ${String(d.termMonths) === String(m) ? "selected" : ""}>${m} meses</option>`).join("")}</select>`)}
+      ${field("Plazo", `<select data-field="termMonths">${TERM_OPTIONS.map((m) => `<option value="${m}" ${String(d.termMonths) === String(m) ? "selected" : ""}>${termLabel(m)}</option>`).join("")}</select>`)}
     </div>
     ${field("Propósito", `<select data-field="purpose" required>
       <option value="">Selecciona</option>
-      ${["Capital de trabajo", "Emergencia médica", "Educación", "Mejoras del hogar", "Compra de herramientas", "Consolidar deudas"].map((p) => `<option ${d.purpose === p ? "selected" : ""}>${esc(p)}</option>`).join("")}
+      ${PURPOSE_OPTIONS.map((p) => `<option value="${esc(p)}" ${d.purpose === p ? "selected" : ""}>${esc(p)}</option>`).join("")}
+      <option value="${CUSTOM_PURPOSE}" ${d.purpose === CUSTOM_PURPOSE ? "selected" : ""}>Otro (especificar)</option>
     </select>`)}
+    ${d.purpose === CUSTOM_PURPOSE ? field("Especifica el propósito", `<input type="text" data-field="purposeOther" value="${esc(d.purposeOther)}" placeholder="Cuéntanos para qué lo necesitas" maxlength="80" />`) : ""}
     <label class="consent consent-final"><input type="checkbox" data-field="consentFinal" ${d.consentFinal ? "checked" : ""} /> Autorizo a EqualScore a evaluar mi solicitud con los datos entregados.</label>
   </fieldset>`;
 }
@@ -274,11 +306,46 @@ function step4(d) {
 // ---- Result ---------------------------------------------------------------
 function resultHTML(d, res) {
   const approved = isApproved(res.score);
+  const earned = res.score - 300;
+  const headroom = 850 - res.score;
+
+  // Every factor is shown: positive contributors in green with an "of max"
+  // sub-label, zero-contribution factors dimmed so it's obvious which data
+  // sources weren't used yet.
   const factors = res.factors
-    .filter((f) => f.points > 0)
-    .sort((a, b) => b.points - a.points)
-    .map((f) => `<li class="${f.positive ? "pos" : "neu"}"><span class="factor-pts">+${f.points}</span> ${esc(f.label)}</li>`)
+    .map((f) => {
+      const zero = f.points <= 0;
+      const cls = zero ? "zero" : f.positive ? "pos" : "neu";
+      const sub = zero
+        ? `<span class="factor-zero-pts">Sin aporte todavía · hasta ${f.max} puntos posibles</span>`
+        : `<span class="factor-of-max">${f.points} / ${f.max} posibles</span>`;
+      return `<li class="${cls}">
+        <span class="factor-pts">+${f.points}</span>
+        <span class="factor-body"><span class="factor-label">${esc(f.label)}</span>${sub}</span>
+      </li>`;
+    })
     .join("");
+
+  // Prioritised "how to improve" list — only factors with room to grow,
+  // ordered by the biggest potential gain.
+  const improvements = res.factors
+    .filter((f) => f.tip)
+    .map((f) => ({ gain: f.max - f.points, tip: f.tip }))
+    .filter((x) => x.gain > 0)
+    .sort((a, b) => b.gain - a.gain);
+
+  const improvementsHTML = improvements.length
+    ? `<div class="improvements">
+        <h3 class="improvements-title">Cómo mejorar tu puntaje</h3>
+        <ul>
+          ${improvements
+            .map(
+              (i) => `<li class="improvement-item"><span class="improvement-gain">+${i.gain} pts</span><span class="improvement-tip">${esc(i.tip)}</span></li>`
+            )
+            .join("")}
+        </ul>
+      </div>`
+    : `<p class="all-max-note">¡Excelente! Estás aprovechando al máximo todos los factores que medimos.</p>`;
 
   return `
     <div class="result-screen">
@@ -297,6 +364,11 @@ function resultHTML(d, res) {
           </div>
           <div class="band-badge" style="background:${res.color}1a;color:${res.color}">${esc(res.bandLabel)}</div>
           <p class="decision ${approved ? "ok" : "no"}">${approved ? "Crédito pre-aprobado" : "Necesitamos más datos para aprobar"}</p>
+          <div class="score-breakdown">
+            <div><span class="sb-label">Base</span><span class="sb-val">300</span></div>
+            <div><span class="sb-label">Puntos obtenidos</span><span class="sb-val">+${earned}</span></div>
+            <div><span class="sb-label">Puntos posibles adicionales</span><span class="sb-val">+${headroom}</span></div>
+          </div>
         </div>
 
         <div class="result-detail">
@@ -309,6 +381,8 @@ function resultHTML(d, res) {
 
           <h3 class="factors-title">Qué influyó en tu score</h3>
           <ul class="factors">${factors}</ul>
+
+          ${improvementsHTML}
 
           <div class="result-actions">
             <button type="button" class="btn btn-primary" data-act="send">Enviar a la empresa</button>
@@ -333,6 +407,7 @@ function buildConsultaRecord(d, res) {
   const approved = isApproved(res.score);
   const today = new Date().toISOString().slice(0, 10);
   const place = PLACES.find((p) => p.comuna === d.comuna) || {};
+  const purpose = d.purpose === CUSTOM_PURPOSE ? d.purposeOther.trim() : d.purpose;
   return {
     id,
     name: d.name,
@@ -357,7 +432,7 @@ function buildConsultaRecord(d, res) {
     loan: approved
       ? {
           amount: Number(d.amount), termMonths: Number(d.termMonths), rateMonthly: 0.03,
-          purpose: d.purpose, dateGranted: today, comisionApertura: Math.round(Number(d.amount) * 0.02),
+          purpose, dateGranted: today, comisionApertura: Math.round(Number(d.amount) * 0.02),
           cuotaAmount: Math.round((Number(d.amount) / Number(d.termMonths)) * 1.03),
           cuotas: [], saldo: Number(d.amount), nextDueDate: today, daysLate: 0, mora90: false,
         }

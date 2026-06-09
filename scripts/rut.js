@@ -42,6 +42,21 @@ export function formatRut(rut) {
   return `${withDots}-${dv}`;
 }
 
+/**
+ * Live-format raw user input into canonical RUT form as they type. Accepts any
+ * format (plain digits, with dots/dash, lowercase k) and renders it as
+ * "XX.XXX.XXX-X". The last character is treated as the verifier digit, the rest
+ * as the body, so a 9-character code typed in any form is shown correctly.
+ */
+export function formatRutInput(value) {
+  let clean = cleanRut(value).slice(0, 9); // 8 body digits + 1 verifier max
+  if (clean.length <= 1) return clean;
+  const body = clean.slice(0, -1).replace(/[^0-9]/g, "");
+  let dv = clean.slice(-1).replace(/[^0-9K]/g, "");
+  const withDots = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return dv ? `${withDots}-${dv}` : withDots;
+}
+
 /** Build a valid RUT string from a numeric body (for seeding mock data). */
 export function rutFromBody(body) {
   const b = String(body);

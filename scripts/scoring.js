@@ -46,37 +46,83 @@ export function computeScore(input) {
   const obPts = openBanking ? 60 : 0;
   const phonePts = phoneAuthorized ? 40 : 0;
 
-  const raw = 300 + utilityPts + incomePts + tenurePts + workPts + appPts + obPts + phonePts;
+  const raw = 300 + utilityPts + incomePts + tenurePts + workPts + obPts + appPts + phonePts;
   const score = Math.round(clamp(raw, 300, 850));
 
   const band = bandFor(score);
 
-  // Factors that drove the score, biggest contribution first.
+  // ---- per-factor improvement tips ----------------------------------------
+  // Each tip quantifies exactly how many points the user could still gain and
+  // names a concrete action. Tips are null when the factor is already maxed.
+  const utilityGap = 220 - Math.round(utilityPts);
+  let utilityTip = null;
+  if (utilityMonths < 36 && utilityGap > 0) {
+    const monthsToMax = 36 - utilityMonths;
+    utilityTip = `Mantén tus servicios al día: ${monthsToMax} ${monthsToMax === 1 ? "mes más" : "meses más"} consecutivos suman hasta +${utilityGap} puntos.`;
+  }
+
+  // Income stability: surface the single binding sub-factor (work/income/tenure).
+  const workGap = 40 - workPts;
+  const incomeGap = Math.round(60 - incomePts);
+  const tenureGap = Math.round(60 - tenurePts);
+  const stabCandidates = [
+    { gap: workGap, msg: (g) => `Formaliza tu actividad laboral (dependiente o independiente): suma hasta +${g} puntos.` },
+    { gap: incomeGap, msg: (g) => `Acreditar un ingreso mayor (hasta $1.000.000) suma hasta +${g} puntos.` },
+    { gap: tenureGap, msg: (g) => `Sumar antigüedad en tu actividad (hasta 60 meses) aporta hasta +${g} puntos.` },
+  ].filter((c) => c.gap > 0).sort((a, b) => b.gap - a.gap);
+  const stabilityTip = stabCandidates.length ? stabCandidates[0].msg(stabCandidates[0].gap) : null;
+
+  let appTip = null;
+  if (appUsage !== "alta") {
+    const appGap = 70 - appPts;
+    appTip = `Registrar más actividad en apps (nivel ${appUsage === "baja" ? "medio o alto" : "alto"}) suma hasta +${appGap} puntos.`;
+  }
+
+  const obTip = openBanking ? null : "Conecta Open Banking (Ley Fintech 21.521) para verificar tus cuentas: suma 60 puntos.";
+  const phoneTip = phoneAuthorized ? null : "Autoriza las métricas agregadas de tu celular: suma 40 puntos.";
+
+  // Factors that drove the score, with their ceiling (max) and a tip. Biggest
+  // contribution first.
   const factors = [
     {
+      key: "utility",
       label: `Pagos de servicios al día: ${utilityMonths} ${utilityMonths === 1 ? "mes" : "meses"} consecutivos`,
       points: Math.round(utilityPts),
+      max: 220,
       positive: utilityMonths >= 12,
+      tip: utilityTip,
     },
     {
+      key: "income",
       label: `Estabilidad de ingresos (${workLabel(workType)}, ${tenureMonths} meses de antigüedad)`,
       points: Math.round(incomePts + tenurePts + workPts),
+      max: 160,
       positive: incomePts + tenurePts + workPts >= 70,
+      tip: stabilityTip,
     },
     {
+      key: "apps",
       label: `Comportamiento en apps: actividad ${appUsage}`,
       points: Math.round(appPts),
+      max: 70,
       positive: appUsage !== "baja",
+      tip: appTip,
     },
     {
+      key: "ob",
       label: openBanking ? "Open Banking conectado (datos verificados)" : "Open Banking no conectado",
       points: Math.round(obPts),
+      max: 60,
       positive: openBanking,
+      tip: obTip,
     },
     {
+      key: "phone",
       label: phoneAuthorized ? "Uso de celular autorizado (métricas agregadas)" : "Uso de celular no autorizado",
       points: Math.round(phonePts),
+      max: 40,
       positive: phoneAuthorized,
+      tip: phoneTip,
     },
   ];
 
@@ -105,20 +151,39 @@ function workLabel(w) {
   );
 }
 
-/** Brand-voice, plain-language explanation. */
+const DRIVER_PHRASES = {
+  utility: "tu historial de pagos de servicios al día",
+  income: "la estabilidad de tus ingresos y tu trabajo",
+  apps: "tu actividad constante en apps",
+  ob: "tus cuentas verificadas por Open Banking",
+  phone: "el uso responsable de tu celular",
+};
+
+/**
+ * Brand-voice, plain-language explanation. Band-aware: tells the user what
+ * their score *means* for credit access and highlights the single factor that
+ * helped them most. Works with any result that carries `factors` (computeScore
+ * output); degrades gracefully if factors are absent.
+ */
 export function explain(input, result, firstName) {
   const name = firstName || (input.name ? String(input.name).split(" ")[0] : "Hola");
-  const m = clamp(Number(input.utilityMonths) || 0, 0, 36);
-  const lead =
-    m >= 12
-      ? `${name}, pagaste tus servicios ${m} meses seguidos`
-      : `${name}, registras ${m} ${m === 1 ? "mes" : "meses"} de pagos de servicios`;
+  const score = result.score;
+  const band = result.band || bandFor(score).key;
+  const factors = result.factors || [];
 
-  const incomeBit =
-    Number(input.income) >= 400000 ? " y mantienes ingresos estables" : " y estamos evaluando tus ingresos";
+  let bandSentence;
+  if (band === "bajo") {
+    bandSentence = `tu puntaje de ${score} te ubica en riesgo bajo: calificas para nuestras mejores condiciones de crédito`;
+  } else if (band === "medio") {
+    bandSentence = `tu puntaje de ${score} te ubica en riesgo medio: ya calificas para un crédito, y llegar a 720 o más te abriría condiciones aún mejores`;
+  } else {
+    bandSentence = `tu puntaje de ${score} está en riesgo alto: hoy necesitamos más antecedentes para aprobarte, pero puedes mejorarlo con los pasos de abajo`;
+  }
 
-  return (
-    `${lead}${incomeBit}. Score: ${result.score}. ${result.bandLabel}. ` +
-    `Esto es lo que el banco nunca miró.`
-  );
+  const driver = factors.filter((f) => f.points > 0).sort((a, b) => b.points - a.points)[0];
+  const driverSentence = driver
+    ? ` Lo que más sumó a tu favor fue ${DRIVER_PHRASES[driver.key] || "los datos que compartiste"}.`
+    : "";
+
+  return `${name}, ${bandSentence}.${driverSentence} Esto es lo que el banco tradicional nunca miró.`;
 }

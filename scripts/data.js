@@ -265,6 +265,16 @@ export function addCustomer(customers, record) {
   saveDataset(next);
   return next;
 }
+export function updateCustomer(customers, id, patch) {
+  const next = customers.map((c) => (c.id === id ? { ...c, ...patch, loan: patch.loan !== undefined ? patch.loan : c.loan } : c));
+  saveDataset(next);
+  return next;
+}
+export function deleteCustomer(customers, id) {
+  const next = customers.filter((c) => c.id !== id);
+  saveDataset(next);
+  return next;
+}
 
 // ---- Derived statistics ----------------------------------------------------
 function periodWindows(period) {
@@ -348,8 +358,45 @@ export function computeStats(customers, period = "mes") {
     },
     book: { carteraActiva, pagadores: pagadoresTot, noPagadores: noPagadoresTot },
     series: weeklySeries(customers),
+    moraSeries: moraEvolution(customers),
     fairness: fairness(customers),
   };
+}
+
+const MONTH_ABBR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+/**
+ * Realistic delinquency evolution: a CUMULATIVE portfolio mora rate over the
+ * last 12 months. At each month-end we count loans already originated by then
+ * (people who took credit) and, of those, how many were already in mora at that
+ * date (people not paying). This produces a smooth curve that rises as the book
+ * matures — instead of the noisy per-week origination ratio — and stays
+ * consistent with the credit volume and the actual non-payers in the dataset.
+ */
+function moraEvolution(customers) {
+  const points = [];
+  for (let m = 11; m >= 0; m--) {
+    const end = addMonths(TODAY, -m);
+    let active = 0;
+    let mora = 0;
+    for (const c of customers) {
+      if (!c.loan) continue;
+      if (new Date(c.loan.dateGranted) <= end) {
+        active++;
+        if (c.estado === "en_mora") {
+          const firstAtrasada = (c.loan.cuotas || []).find((cu) => cu.status === "atrasada");
+          if (firstAtrasada && new Date(firstAtrasada.dueDate) <= end) mora++;
+        }
+      }
+    }
+    points.push({
+      label: MONTH_ABBR[end.getMonth()],
+      moraRate: active ? mora / active : 0,
+      active,
+      mora,
+    });
+  }
+  return points;
 }
 
 function delta(cur, prev) {

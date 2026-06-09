@@ -141,6 +141,16 @@ output{color:var(--indigo-700);font-weight:700}
 .starter-offer-grow{margin-top:8px;font-size:.9rem;color:var(--slate);line-height:1.45}
 
 .send-note{margin-top:12px;font-size:.88rem;color:#065F46;background:var(--green-50);border:1px solid #A7F3D0;border-radius:var(--radius-sm);padding:10px 12px}
+
+/* existing-credit situation feedback */
+.credit-status{margin-top:18px;background:var(--bg-soft);border:1px solid var(--line);border-radius:var(--radius-sm);padding:16px}
+.credit-status-title{font-size:1.05rem;margin-bottom:10px;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.credit-status p{font-size:.9rem;color:var(--slate);line-height:1.45;margin-bottom:6px}
+.credit-status .credit-good{color:#065F46}
+.credit-status-grow{margin-top:8px}
+.credit-adj{font-size:.78rem;font-weight:800;padding:3px 9px;border-radius:999px;font-variant-numeric:tabular-nums}
+.credit-adj.pos{background:var(--green-50);color:var(--green)}
+.credit-adj.neg{background:var(--red-50);color:var(--red)}
 .result-detail{display:flex;flex-direction:column}
 .result-explain{font-size:1.15rem;font-weight:600;color:var(--ink);background:linear-gradient(120deg,var(--lav-50),#fff);border-left:4px solid var(--violet-500);padding:14px 16px;border-radius:var(--radius-sm)}
 .bias-verified{display:flex;gap:12px;align-items:flex-start;background:var(--green-50);border:1px solid #A7F3D0;color:#065F46;border-radius:var(--radius-sm);padding:14px;margin-top:16px;font-size:.92rem}

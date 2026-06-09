@@ -16,6 +16,31 @@ const PURPOSE_OPTIONS = [
   "Consolidar deudas",
 ];
 const CUSTOM_PURPOSE = "__custom__";
+const MAX_AMOUNT = 10000000; // tope de solicitud: $10.000.000
+
+/**
+ * Invent a plausible existing-credit profile for an applicant. Generated anew
+ * each time a score is requested (so it varies), and fed into the score:
+ *   · openCredits / openDebt — current obligations, raise risk.
+ *   · repaidOnTime — previous credits paid on time, a positive track record.
+ */
+function inventCreditProfile() {
+  const r = Math.random();
+  let openCredits = 0;
+  if (r < 0.45) openCredits = 0;
+  else if (r < 0.75) openCredits = 1;
+  else if (r < 0.9) openCredits = 2;
+  else openCredits = 3;
+
+  let openDebt = 0;
+  for (let i = 0; i < openCredits; i++) {
+    openDebt += (3 + Math.floor(Math.random() * 28)) * 100000; // $300.000–$3.000.000 c/u
+  }
+
+  const maxRepaid = openCredits > 0 ? 3 : 2;
+  const repaidOnTime = Math.floor(Math.random() * (maxRepaid + 1));
+  return { openCredits, openDebt, repaidOnTime };
+}
 
 export function renderCustomer(onSubmitConsulta) {
   const state = {
@@ -110,6 +135,10 @@ export function renderCustomer(onSubmitConsulta) {
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       if (!validateStep()) return;
+      // Invent the applicant's existing-credit situation for this assessment.
+      // It feeds the score (current debt = more risk, paid history = less) and
+      // is surfaced to the client in the result feedback.
+      const creditHistory = inventCreditProfile();
       const inputs = {
         utilityMonths: state.data.utilityMonths,
         income: state.data.income,
@@ -118,6 +147,7 @@ export function renderCustomer(onSubmitConsulta) {
         appUsage: state.data.appUsage,
         openBanking: state.data.openBanking,
         phoneAuthorized: state.data.phoneAuthorized,
+        creditHistory,
         name: state.data.name,
       };
       const res = computeScore(inputs);
@@ -162,6 +192,7 @@ export function renderCustomer(onSubmitConsulta) {
       if (d.phoneAuthorized && !d.consentPhone) return set("Marca el consentimiento de uso de celular.");
     } else if (state.step === 3) {
       if (d.amount === "" || Number(d.amount) <= 0) return set("Ingresa el monto que necesitas.");
+      if (Number(d.amount) > MAX_AMOUNT) return set("El monto máximo que puedes solicitar es $10.000.000.");
       if (!d.purpose) return set("Selecciona el propósito del crédito.");
       if (d.purpose === CUSTOM_PURPOSE && !d.purposeOther.trim()) return set("Especifica el propósito del crédito.");
       if (!d.consentFinal) return set("Debes autorizar la evaluación para continuar.");
@@ -280,7 +311,7 @@ function step3(d) {
 function step4(d) {
   return `<fieldset><legend>Crédito solicitado</legend>
     <div class="grid-2">
-      ${field("Monto (CLP)", `<input type="number" data-field="amount" value="${esc(d.amount)}" min="0" step="50000" placeholder="800000" />`)}
+      ${field("Monto (CLP)", `<input type="number" data-field="amount" value="${esc(d.amount)}" min="0" max="${MAX_AMOUNT}" step="50000" placeholder="800000" />`, "Monto máximo: $10.000.000.")}
       ${field("Plazo (meses)", `<select data-field="termMonths">${[6, 9, 12, 18, 24, 36].map((m) => `<option value="${m}" ${String(d.termMonths) === String(m) ? "selected" : ""}>${m} meses</option>`).join("")}</select>`)}
     </div>
     ${field("Propósito", `<select data-field="purpose" required>
@@ -325,6 +356,31 @@ function resultHTML(d, res) {
           : `Un primer crédito acotado para empezar a construir tu historial.`
       }</p>
       <p class="starter-offer-grow">📈 Al tomar este crédito y <strong>pagar tus cuotas a tiempo</strong>, tu score sube y en tu próxima solicitud podrás acceder a un monto mayor —hasta <strong>${clp(offer.nextAmount)}</strong>— y mejores condiciones.</p>
+    </div>`;
+
+  // Existing-credit feedback: how many credits the client already has open and
+  // for how much, plus the effect on the score and the message that a good
+  // repayment record raises it.
+  const credit = res.credit || { openCredits: 0, openDebt: 0, repaidOnTime: 0, adjustment: 0 };
+  const adj = Number(credit.adjustment) || 0;
+  const adjText =
+    adj === 0
+      ? ""
+      : `<span class="credit-adj ${adj > 0 ? "pos" : "neg"}">${adj > 0 ? "+" : ""}${adj} pts en tu puntaje</span>`;
+  const openLine =
+    credit.openCredits > 0
+      ? `<p>Detectamos que ya tienes <strong>${credit.openCredits} crédito${credit.openCredits === 1 ? "" : "s"} abierto${credit.openCredits === 1 ? "" : "s"}</strong> por un total de <strong>${clp(credit.openDebt)}</strong>. Tener deuda vigente aumenta tu carga financiera y resta puntaje.</p>`
+      : `<p>No detectamos <strong>créditos abiertos</strong> a tu nombre. No arrastrar deuda vigente juega a tu favor.</p>`;
+  const historyLine =
+    credit.repaidOnTime > 0
+      ? `<p class="credit-good">✓ Registras <strong>${credit.repaidOnTime} crédito${credit.repaidOnTime === 1 ? "" : "s"} anterior${credit.repaidOnTime === 1 ? "" : "es"} pagado${credit.repaidOnTime === 1 ? "" : "s"} a tiempo</strong>, lo que <strong>sube tu puntaje</strong>.</p>`
+      : `<p>Aún no registramos créditos anteriores pagados a tiempo. <strong>Un buen historial de pago de un crédito previo mejora tu puntaje</strong> en futuras solicitudes.</p>`;
+  const creditHTML = `
+    <div class="credit-status">
+      <h3 class="credit-status-title">Tu situación de crédito ${adjText}</h3>
+      ${openLine}
+      ${historyLine}
+      <p class="credit-status-grow">Pagar tus créditos —los de hoy y los que vengan— <strong>a tiempo</strong> es la forma más rápida de subir tu puntaje y acceder a montos mayores.</p>
     </div>`;
 
   // Every factor is shown: positive contributors in green with an "of max"
@@ -398,6 +454,8 @@ function resultHTML(d, res) {
             <div><strong>Sesgo verificado.</strong> Este resultado se calculó sin usar tu género, comuna ni edad, y se auditó contra paridad de género y territorial.</div>
           </div>
 
+          ${creditHTML}
+
           ${offerHTML}
 
           <h3 class="factors-title">Qué influyó en tu score</h3>
@@ -445,6 +503,9 @@ function buildConsultaRecord(d, res) {
     scoreInputs: {
       utilityMonths: d.utilityMonths, income: Number(d.income), tenureMonths: Number(d.tenureMonths),
       workType: d.workType, appUsage: d.appUsage, openBanking: d.openBanking, phoneAuthorized: d.phoneAuthorized,
+      creditHistory: res.credit
+        ? { openCredits: res.credit.openCredits, openDebt: res.credit.openDebt, repaidOnTime: res.credit.repaidOnTime }
+        : undefined,
     },
     score: res.score,
     band: bandFor(res.score).key,

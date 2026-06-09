@@ -46,7 +46,14 @@ export function computeScore(input) {
   const obPts = openBanking ? 60 : 0;
   const phonePts = phoneAuthorized ? 40 : 0;
 
-  const raw = 300 + utilityPts + incomePts + tenurePts + workPts + obPts + appPts + phonePts;
+  // Optional credit-history signal. Only the customer flow supplies it; the
+  // seeded dataset omits it, so historical scores stay byte-for-byte identical
+  // and the fairness parity tuning is preserved. Current open debt raises risk
+  // (lowers the score); a record of previous credits paid on time helps it.
+  const ch = input.creditHistory || null;
+  const credit = creditAdjustment(ch, income);
+
+  const raw = 300 + utilityPts + incomePts + tenurePts + workPts + obPts + appPts + phonePts + credit.adjustment;
   const score = Math.round(clamp(raw, 300, 850));
 
   const band = bandFor(score);
@@ -126,7 +133,36 @@ export function computeScore(input) {
     },
   ];
 
-  return { score, band: band.key, bandLabel: band.label, color: band.color, factors };
+  return {
+    score,
+    band: band.key,
+    bandLabel: band.label,
+    color: band.color,
+    factors,
+    credit: { ...credit, ...(ch || { openCredits: 0, openDebt: 0, repaidOnTime: 0 }) },
+  };
+}
+
+/**
+ * Score effect of the applicant's existing credit. Returns the signed point
+ * adjustment plus its component parts so the UI can explain it. With no history
+ * object the adjustment is exactly 0 (neutral), keeping seeded scores unchanged.
+ */
+function creditAdjustment(ch, income) {
+  if (!ch) return { adjustment: 0, debtPenalty: 0, historyBonus: 0 };
+  const openCredits = Math.max(0, Number(ch.openCredits) || 0);
+  const openDebt = Math.max(0, Number(ch.openDebt) || 0);
+  const repaidOnTime = Math.max(0, Number(ch.repaidOnTime) || 0);
+
+  const annualIncome = Math.max(1, (Math.max(0, Number(income) || 0)) * 12);
+  const debtBurden = clamp(openDebt / annualIncome, 0, 1);
+  // Up to -110: heavier the more they owe relative to income, plus a flat risk
+  // bump per open line.
+  const debtPenalty = Math.round(debtBurden * 80) + openCredits * 10;
+  // Up to +60: a clean repayment track record on previous credits.
+  const historyBonus = Math.min(repaidOnTime, 3) * 20;
+
+  return { adjustment: historyBonus - debtPenalty, debtPenalty, historyBonus };
 }
 
 export function bandFor(score) {

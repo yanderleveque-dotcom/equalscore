@@ -9,8 +9,6 @@ const STEPS = ["Datos personales", "Situación laboral", "Datos alternativos", "
 
 const PURPOSE_OPTIONS = [
   "Capital de trabajo",
-  "Comprar departamento",
-  "Comprar casa",
   "Emergencia médica",
   "Educación",
   "Mejoras del hogar",

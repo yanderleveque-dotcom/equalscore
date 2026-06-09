@@ -67,7 +67,7 @@ function range(rng, lo, hi) {
 function generate(seed = SEED) {
   const rng = mulberry32(seed);
   const customers = [];
-  const COUNT = 90;
+  const COUNT = 220;
   let rutBody = 9_000_000;
 
   for (let i = 0; i < COUNT; i++) {
@@ -107,16 +107,27 @@ function generate(seed = SEED) {
     const { score } = computeScore(scoreInputs);
     const approved = isApproved(score);
 
-    // Origination/consulta date, spread over ~18 months but biased toward
-    // recent dates (rng^1.7) so the period KPIs are well populated while the
-    // portfolio still has mature loans (needed for 90-day mora and "pagado").
-    const ageDays = Math.floor(Math.pow(rng(), 1.7) * 540);
+    // Origination/consulta date: a growing-lender curve. ~62% of applicants
+    // arrived in the last ~14 weeks, smoothly denser toward the present so the
+    // weekly disbursement chart trends up without empty weeks or a single-day
+    // spike; the remaining ~38% are spread back to ~18 months so the book still
+    // has mature loans for the delinquency curve and "pagado" status. A single
+    // rng() draw keeps the deterministic stream (and fairness tuning) intact.
+    const u = rng();
+    let ageDays;
+    if (u < 0.66) {
+      const t = u / 0.66; // 0..1 within the recent band
+      ageDays = Math.floor(Math.pow(t, 1.45) * 84); // last 12 weeks, growth toward present
+    } else {
+      const t = (u - 0.66) / 0.34; // 0..1 within the older band
+      ageDays = Math.floor(84 + t * (540 - 84));
+    }
     const consultaDate = iso(addDays(TODAY, -ageDays));
 
     let loan = null;
     let estado = "rechazado";
     if (approved) {
-      const amount = range(rng, 3, 60) * 100000; // 300k – 6.0M CLP
+      const amount = range(rng, 4, 26) * 100000; // 400k – 2.6M CLP (tighter, realistic micro-loan)
       const termMonths = pick(rng, [6, 9, 12, 18, 24]);
       const rateMonthly = 0.022 + rng() * 0.018; // 2.2% – 4.0%
       const purpose = pick(rng, PURPOSES);

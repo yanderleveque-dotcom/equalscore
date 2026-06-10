@@ -161,6 +161,9 @@ export function renderCustomer(onSubmitConsulta, getHistory) {
         returning,
         visitNumber: (history ? history.visits : 0) + 1,
       };
+      // Requesting the score IS the application: send it to the company
+      // automatically (no separate "enviar" step).
+      onSubmitConsulta?.(buildConsultaRecord(state.data, state.result));
       render();
     });
     if (state.step === 0) rebuildComunas(form);
@@ -215,16 +218,6 @@ export function renderCustomer(onSubmitConsulta, getHistory) {
       state.result = null; state.step = 0;
       state.data.consentFinal = false;
       render();
-    });
-    const send = root.querySelector('[data-act="send"]');
-    if (send) send.addEventListener("click", () => {
-      const rec = buildConsultaRecord(state.data, state.result);
-      onSubmitConsulta?.(rec);
-      send.textContent = "Enviado ✓ · pendiente de aprobación";
-      send.disabled = true;
-      send.classList.add("is-sent");
-      const note = root.querySelector("#send-note");
-      if (note) note.hidden = false;
     });
     drawGauge(root, state.result.score);
   }
@@ -505,11 +498,10 @@ function resultHTML(d, res) {
 
           ${improvementsHTML}
 
+          <p class="send-note" id="send-note">✓ Tu solicitud se <strong>envió automáticamente</strong> a la empresa y quedó <strong>pendiente</strong> de aprobación. La empresa la revisará y decidirá si otorga el crédito.</p>
           <div class="result-actions">
-            <button type="button" class="btn btn-primary" data-act="send">Enviar a la empresa</button>
-            <button type="button" class="btn btn-ghost" data-act="restart">Hacer otra simulación</button>
+            <button type="button" class="btn btn-ghost" data-act="restart">Hacer otra solicitud</button>
           </div>
-          <p class="send-note" id="send-note" hidden>Tu solicitud quedó <strong>pendiente</strong>. La empresa la revisará y decidirá si aprueba el crédito.</p>
         </div>
       </div>
     </div>`;

@@ -2,7 +2,7 @@
 
 import { clp, num, pct, fmtDate, esc, normalize, daysBetween } from "./utils.js";
 import { cleanRut } from "./rut.js";
-import { computeStats, estadoLabels, PLACES } from "./data.js";
+import { computeStats, estadoLabels, PLACES, clientHistory } from "./data.js";
 import { computeScore, explain } from "./scoring.js";
 
 const PAGE_SIZE = 8;
@@ -384,9 +384,48 @@ export function renderDashboard(deps) {
     } else {
       creditLines.push(`Aún no registra créditos previos pagados a tiempo; pagar puntualmente sumaría puntos a futuro.`);
     }
-    const creditAdjTotal = (cr.historyBonus || 0) - (cr.debtPenalty || 0);
+    const creditAdjTotal = (cr.historyBonus || 0) + (cr.onTimeBonus || 0) - (cr.debtPenalty || 0);
     const adjClass = creditAdjTotal > 0 ? "pos" : creditAdjTotal < 0 ? "neg" : "neutral";
     const adjLabel = creditAdjTotal > 0 ? `+${creditAdjTotal} pts` : creditAdjTotal < 0 ? `${creditAdjTotal} pts` : "0 pts";
+
+    // ---- Cross-application history for this RUT (includes the current record) -
+    const hist = clientHistory(getCustomers(), c.rut);
+    const histChips = `
+      <div class="client-hist-chips">
+        <span class="chc"><span class="chc-n">${hist.visits}</span>${hist.visits === 1 ? "solicitud" : "solicitudes"}</span>
+        <span class="chc ok"><span class="chc-n">${hist.approvals}</span>${hist.approvals === 1 ? "aprobado" : "aprobados"}</span>
+        <span class="chc no"><span class="chc-n">${hist.rejections}</span>${hist.rejections === 1 ? "rechazado" : "rechazados"}</span>
+        ${hist.pending ? `<span class="chc pending"><span class="chc-n">${hist.pending}</span>${hist.pending === 1 ? "pendiente" : "pendientes"}</span>` : ""}
+      </div>`;
+    const payerNote =
+      hist.onTimeCredits > 0
+        ? `<p class="client-hist-note good">✓ Buen pagador: está pagando a tiempo ${hist.onTimeCredits === 1 ? "su crédito vigente" : `sus ${hist.onTimeCredits} créditos vigentes`}.</p>`
+        : hist.inMora > 0
+          ? `<p class="client-hist-note bad">⚠ Registra ${hist.inMora} crédito${hist.inMora === 1 ? "" : "s"} en mora.</p>`
+          : hist.repaidOnTime > 0
+            ? `<p class="client-hist-note good">✓ Ha pagado ${hist.repaidOnTime} crédito${hist.repaidOnTime === 1 ? "" : "s"} a tiempo.</p>`
+            : "";
+    const histList =
+      hist.visits > 1
+        ? `<ul class="client-hist-list">
+            ${hist.records
+              .map((r) => {
+                const amt = r.loan ? clp(r.loan.amount) : r.requested && r.requested.amount ? clp(r.requested.amount) : "—";
+                return `<li>
+                  <span class="chl-date">${fmtDate(r.consultaDate)}</span>
+                  ${decisionBadge(r.decision)}
+                  <span class="chl-amt">${amt}</span>
+                  ${r.id === c.id ? `<span class="chl-current">actual</span>` : ""}
+                </li>`;
+              })
+              .join("")}
+          </ul>`
+        : `<p class="client-hist-note">Primera solicitud de este cliente.</p>`;
+    const historyHTML = `
+      <h3 class="client-hist-title">Historial del cliente</h3>
+      ${histChips}
+      ${payerNote}
+      ${histList}`;
 
     const loan = c.loan;
     const isPending = c.decision === "pendiente";
@@ -426,6 +465,8 @@ export function renderDashboard(deps) {
         <p class="modal-explain">${esc(exp)} <span class="mini-verified">Sesgo verificado ✓</span></p>
 
         ${isPending ? `<div class="pending-banner">Solicitud <strong>pendiente</strong> de aprobación. Revisa los datos y decide si otorgar el crédito solicitado.</div>` : ""}
+
+        ${historyHTML}
 
         <h3 class="score-why-title">Por qué ${firstName} tiene este score</h3>
         <p class="score-why-intro">Partimos de una base de 300 puntos y sumamos señales de comportamiento y financieras —nunca género, comuna ni edad—. Así se reparten los puntos (máximo 850):</p>
@@ -667,6 +708,12 @@ function deltaChip(d, goodWhenUp) {
 function estadoBadge(estado) {
   const cls = { pendiente: "pending", al_dia: "ok", en_mora: "no", pagado: "neutral", rechazado: "muted" }[estado] || "muted";
   return `<span class="badge ${cls}">${esc(estadoLabels[estado] || estado)}</span>`;
+}
+function decisionBadge(decision) {
+  if (decision === "aprobado") return '<span class="badge ok">Aprobado</span>';
+  if (decision === "pendiente") return '<span class="badge pending">Pendiente</span>';
+  if (decision === "rechazado") return '<span class="badge no">Rechazado</span>';
+  return `<span class="badge muted">${esc(decision || "—")}</span>`;
 }
 function cuotaLabel(s) {
   return { pagada: "Pagada", pendiente: "Pendiente", atrasada: "Atrasada" }[s] || s;

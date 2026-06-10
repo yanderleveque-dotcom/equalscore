@@ -6,7 +6,7 @@
 // consultas) are saved back.
 
 import { mulberry32, clamp, daysBetween } from "./utils.js";
-import { rutFromBody } from "./rut.js";
+import { rutFromBody, cleanRut } from "./rut.js";
 import { computeScore, bandFor, isApproved } from "./scoring.js";
 
 const STORAGE_KEY = "equalscore.dataset.v1";
@@ -313,6 +313,51 @@ export function approveCustomer(customers, id) {
 /** Company rejects a pending walk-in: no loan is created. */
 export function rejectCustomer(customers, id) {
   return updateCustomer(customers, id, { decision: "rechazado", estado: "rechazado", loan: null });
+}
+
+/**
+ * Everything we know about one person across the dataset, keyed by RUT (the
+ * client's identity). Used in two places:
+ *   · the customer flow — to greet a returning applicant ("tu 2ª solicitud") and
+ *     feed their real, previously-approved credit into the new score;
+ *   · the company modal — to show how many times this client was approved or
+ *     rejected and whether they pay on time.
+ *
+ * `excludeId` omits a specific record (e.g. the not-yet-saved current one).
+ * The returned `creditHistory` is ready to drop into computeScore's input.
+ */
+export function clientHistory(customers, rut, { excludeId } = {}) {
+  const key = cleanRut(rut || "");
+  const records = key
+    ? customers.filter((c) => cleanRut(c.rut) === key && (!excludeId || c.id !== excludeId))
+    : [];
+  const approvals = records.filter((c) => c.decision === "aprobado").length;
+  const rejections = records.filter((c) => c.decision === "rechazado").length;
+  const pending = records.filter((c) => c.decision === "pendiente").length;
+
+  const loans = records.filter((c) => c.loan);
+  const openLoans = loans.filter((c) => c.estado === "al_dia" || c.estado === "en_mora");
+  const openDebt = openLoans.reduce((s, c) => s + (c.loan.saldo || 0), 0);
+  const repaidOnTime = loans.filter((c) => c.estado === "pagado").length; // fully repaid
+  const onTimeCredits = loans.filter((c) => c.estado === "al_dia").length; // paying on time now
+  const inMora = loans.filter((c) => c.estado === "en_mora").length;
+
+  const byDate = records.slice().sort((a, b) => (a.consultaDate < b.consultaDate ? 1 : a.consultaDate > b.consultaDate ? -1 : 0));
+
+  return {
+    visits: records.length,
+    approvals,
+    rejections,
+    pending,
+    openCredits: openLoans.length,
+    openDebt,
+    repaidOnTime,
+    onTimeCredits,
+    inMora,
+    records: byDate,
+    // Scoring input derived from real history (returning clients).
+    creditHistory: { openCredits: openLoans.length, openDebt, repaidOnTime, onTimeCredits },
+  };
 }
 
 // ---- Derived statistics ----------------------------------------------------

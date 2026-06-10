@@ -1,6 +1,6 @@
 // app.js — role-based router and application shell.
 
-import { loadDataset, saveDataset, resetDataset, addCustomer, updateCustomer, deleteCustomer, approveCustomer, rejectCustomer } from "./data.js";
+import { loadDataset, saveDataset, resetDataset, addCustomer, updateCustomer, deleteCustomer, approveCustomer, rejectCustomer, clientHistory } from "./data.js";
 import { renderCustomer } from "./customer.js";
 import { renderDashboard } from "./dashboard.js";
 
@@ -43,9 +43,12 @@ function render() {
   if (view === "customer") {
     dashboardApi = null;
     main.appendChild(
-      renderCustomer((rec) => {
-        setCustomers(addCustomer(customers, rec));
-      })
+      renderCustomer(
+        (rec) => {
+          setCustomers(addCustomer(customers, rec));
+        },
+        (rut) => clientHistory(customers, rut)
+      )
     );
   } else if (view === "dashboard") {
     const api = renderDashboard({
@@ -151,10 +154,13 @@ function openNuevaConsulta() {
 
   box.appendChild(closeBtn);
   box.appendChild(
-    renderCustomer((rec) => {
-      setCustomers(addCustomer(customers, rec));
-      dashboardApi && dashboardApi.refresh();
-    })
+    renderCustomer(
+      (rec) => {
+        setCustomers(addCustomer(customers, rec));
+        dashboardApi && dashboardApi.refresh();
+      },
+      (rut) => clientHistory(customers, rut)
+    )
   );
   overlay.appendChild(box);
   document.getElementById("view").appendChild(overlay);

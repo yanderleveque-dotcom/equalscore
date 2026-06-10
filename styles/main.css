@@ -335,6 +335,28 @@ output{color:var(--indigo-700);font-weight:700}
 .score-credit p:last-child{margin-bottom:0}
 .credit-adj.neutral{background:var(--lav-100);color:var(--indigo-700)}
 
+/* Returning-client greeting on the customer result screen */
+.returning-banner{display:flex;flex-direction:column;gap:8px;background:linear-gradient(120deg,var(--lav-50),#fff);border:1px solid var(--lav-100);border-left:4px solid var(--indigo-700);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:14px}
+.returning-badge{align-self:flex-start;font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;background:var(--indigo-700);color:#fff;padding:3px 10px;border-radius:999px}
+.returning-banner p{color:var(--ink);font-size:.95rem;line-height:1.5}
+
+/* Client cross-application history in the company detail modal */
+.client-hist-title{margin-top:18px;font-size:1.05rem}
+.client-hist-chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.chc{display:inline-flex;align-items:center;gap:6px;background:var(--bg-soft);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:.82rem;font-weight:600;color:var(--slate)}
+.chc-n{font-weight:900;font-size:1rem;color:var(--ink);font-variant-numeric:tabular-nums}
+.chc.ok{background:var(--green-50);border-color:#A7F3D0;color:var(--green)}.chc.ok .chc-n{color:var(--green)}
+.chc.no{background:var(--red-50);border-color:#FECACA;color:var(--red)}.chc.no .chc-n{color:var(--red)}
+.chc.pending{background:var(--amber-50);border-color:#FDE68A;color:#92400E}.chc.pending .chc-n{color:#92400E}
+.client-hist-note{font-size:.88rem;color:var(--slate);margin:4px 0}
+.client-hist-note.good{color:#065F46;font-weight:600}
+.client-hist-note.bad{color:var(--red);font-weight:600}
+.client-hist-list{list-style:none;display:flex;flex-direction:column;gap:6px;margin:8px 0 16px;padding:0}
+.client-hist-list li{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 12px;font-size:.86rem}
+.chl-date{color:var(--muted);font-variant-numeric:tabular-nums;min-width:84px}
+.chl-amt{margin-left:auto;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.chl-current{font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;background:var(--lav-100);color:var(--indigo-700);padding:2px 8px;border-radius:999px}
+
 @media(prefers-reduced-motion:reduce){
   *{animation-duration:.001ms!important;transition-duration:.001ms!important}
   .gauge-value{transition:none}

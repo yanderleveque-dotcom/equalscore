@@ -42,7 +42,7 @@ function inventCreditProfile() {
   return { openCredits, openDebt, repaidOnTime };
 }
 
-export function renderCustomer(onSubmitConsulta) {
+export function renderCustomer(onSubmitConsulta, getHistory) {
   const state = {
     step: 0,
     data: {
@@ -135,10 +135,13 @@ export function renderCustomer(onSubmitConsulta) {
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       if (!validateStep()) return;
-      // Invent the applicant's existing-credit situation for this assessment.
-      // It feeds the score (current debt = more risk, paid history = less) and
-      // is surfaced to the client in the result feedback.
-      const creditHistory = inventCreditProfile();
+      // Look this applicant up by RUT. A returning client carries REAL credit
+      // history (their previously-approved, on-time loans) into the new score;
+      // a first-time applicant gets a plausible invented profile so the credit
+      // feedback still has something to show.
+      const history = getHistory ? getHistory(state.data.rut) : null;
+      const returning = !!(history && history.visits > 0);
+      const creditHistory = returning ? history.creditHistory : inventCreditProfile();
       const inputs = {
         utilityMonths: state.data.utilityMonths,
         income: state.data.income,
@@ -151,7 +154,13 @@ export function renderCustomer(onSubmitConsulta) {
         name: state.data.name,
       };
       const res = computeScore(inputs);
-      state.result = { ...res, explanation: explain(inputs, res) };
+      state.result = {
+        ...res,
+        explanation: explain(inputs, res),
+        history,
+        returning,
+        visitNumber: (history ? history.visits : 0) + 1,
+      };
       render();
     });
     if (state.step === 0) rebuildComunas(form);
@@ -361,7 +370,7 @@ function resultHTML(d, res) {
   // Existing-credit feedback: how many credits the client already has open and
   // for how much, plus the effect on the score and the message that a good
   // repayment record raises it.
-  const credit = res.credit || { openCredits: 0, openDebt: 0, repaidOnTime: 0, adjustment: 0 };
+  const credit = res.credit || { openCredits: 0, openDebt: 0, repaidOnTime: 0, onTimeCredits: 0, adjustment: 0 };
   const adj = Number(credit.adjustment) || 0;
   const adjText =
     adj === 0
@@ -371,17 +380,49 @@ function resultHTML(d, res) {
     credit.openCredits > 0
       ? `<p>Detectamos que ya tienes <strong>${credit.openCredits} crédito${credit.openCredits === 1 ? "" : "s"} abierto${credit.openCredits === 1 ? "" : "s"}</strong> por un total de <strong>${clp(credit.openDebt)}</strong>. Tener deuda vigente aumenta tu carga financiera y resta puntaje.</p>`
       : `<p>No detectamos <strong>créditos abiertos</strong> a tu nombre. No arrastrar deuda vigente juega a tu favor.</p>`;
+  const onTimeLine =
+    credit.onTimeCredits > 0
+      ? `<p class="credit-good">✓ Estás <strong>pagando a tiempo</strong> ${credit.onTimeCredits === 1 ? "tu crédito vigente" : `tus ${credit.onTimeCredits} créditos vigentes`} con nosotros, lo que <strong>sube tu puntaje</strong>.</p>`
+      : "";
   const historyLine =
     credit.repaidOnTime > 0
       ? `<p class="credit-good">✓ Registras <strong>${credit.repaidOnTime} crédito${credit.repaidOnTime === 1 ? "" : "s"} anterior${credit.repaidOnTime === 1 ? "" : "es"} pagado${credit.repaidOnTime === 1 ? "" : "s"} a tiempo</strong>, lo que <strong>sube tu puntaje</strong>.</p>`
-      : `<p>Aún no registramos créditos anteriores pagados a tiempo. <strong>Un buen historial de pago de un crédito previo mejora tu puntaje</strong> en futuras solicitudes.</p>`;
+      : credit.onTimeCredits > 0
+        ? ""
+        : `<p>Aún no registramos créditos anteriores pagados a tiempo. <strong>Un buen historial de pago de un crédito previo mejora tu puntaje</strong> en futuras solicitudes.</p>`;
   const creditHTML = `
     <div class="credit-status">
       <h3 class="credit-status-title">Tu situación de crédito ${adjText}</h3>
       ${openLine}
+      ${onTimeLine}
       ${historyLine}
       <p class="credit-status-grow">Pagar tus créditos —los de hoy y los que vengan— <strong>a tiempo</strong> es la forma más rápida de subir tu puntaje y acceder a montos mayores.</p>
     </div>`;
+
+  // Returning-client greeting: recognise the RUT and state which application
+  // number this is, with the running approved/rejected tally and on-time note.
+  const history = res.history;
+  const visitNumber = res.visitNumber || 1;
+  const ordinal = `${visitNumber}ª`;
+  let returningHTML = "";
+  if (res.returning && history) {
+    const parts = [];
+    if (history.approvals > 0) parts.push(`<strong>${history.approvals}</strong> ${history.approvals === 1 ? "crédito aprobado" : "créditos aprobados"}`);
+    if (history.rejections > 0) parts.push(`<strong>${history.rejections}</strong> ${history.rejections === 1 ? "rechazo" : "rechazos"}`);
+    if (history.pending > 0) parts.push(`<strong>${history.pending}</strong> en revisión`);
+    const tally = parts.length ? ` Tu historial con nosotros: ${parts.join(", ")}.` : "";
+    const onTime =
+      history.onTimeCredits > 0
+        ? ` Como vienes <strong>pagando a tiempo</strong> tu crédito vigente, sumamos puntos a tu favor en esta evaluación.`
+        : history.repaidOnTime > 0
+          ? ` Tu historial de pago a tiempo suma puntos a tu favor.`
+          : "";
+    returningHTML = `
+      <div class="returning-banner">
+        <span class="returning-badge">${ordinal} solicitud</span>
+        <p>👋 ¡Hola de nuevo, ${esc(String(d.name).split(" ")[0])}! Reconocimos tu RUT: esta es tu <strong>${ordinal} solicitud</strong> con EqualScore.${tally}${onTime}</p>
+      </div>`;
+  }
 
   // Every factor is shown: positive contributors in green with an "of max"
   // sub-label, zero-contribution factors dimmed so it's obvious which data
@@ -447,6 +488,7 @@ function resultHTML(d, res) {
         </div>
 
         <div class="result-detail">
+          ${returningHTML}
           <p class="result-explain">${esc(res.explanation)}</p>
 
           <div class="bias-verified">
@@ -504,7 +546,12 @@ function buildConsultaRecord(d, res) {
       utilityMonths: d.utilityMonths, income: Number(d.income), tenureMonths: Number(d.tenureMonths),
       workType: d.workType, appUsage: d.appUsage, openBanking: d.openBanking, phoneAuthorized: d.phoneAuthorized,
       creditHistory: res.credit
-        ? { openCredits: res.credit.openCredits, openDebt: res.credit.openDebt, repaidOnTime: res.credit.repaidOnTime }
+        ? {
+            openCredits: res.credit.openCredits,
+            openDebt: res.credit.openDebt,
+            repaidOnTime: res.credit.repaidOnTime,
+            onTimeCredits: res.credit.onTimeCredits,
+          }
         : undefined,
     },
     score: res.score,

@@ -139,7 +139,7 @@ export function computeScore(input) {
     bandLabel: band.label,
     color: band.color,
     factors,
-    credit: { ...credit, ...(ch || { openCredits: 0, openDebt: 0, repaidOnTime: 0 }) },
+    credit: { ...credit, ...(ch || { openCredits: 0, openDebt: 0, repaidOnTime: 0, onTimeCredits: 0 }) },
   };
 }
 
@@ -149,20 +149,30 @@ export function computeScore(input) {
  * object the adjustment is exactly 0 (neutral), keeping seeded scores unchanged.
  */
 function creditAdjustment(ch, income) {
-  if (!ch) return { adjustment: 0, debtPenalty: 0, historyBonus: 0 };
+  if (!ch) return { adjustment: 0, debtPenalty: 0, historyBonus: 0, onTimeBonus: 0 };
   const openCredits = Math.max(0, Number(ch.openCredits) || 0);
   const openDebt = Math.max(0, Number(ch.openDebt) || 0);
   const repaidOnTime = Math.max(0, Number(ch.repaidOnTime) || 0);
+  // Credits the applicant currently holds and is paying ON TIME with us. This is
+  // the returning-good-payer signal: it should clearly lift the score.
+  const onTimeCredits = Math.max(0, Number(ch.onTimeCredits) || 0);
 
   const annualIncome = Math.max(1, (Math.max(0, Number(income) || 0)) * 12);
   const debtBurden = clamp(openDebt / annualIncome, 0, 1);
   // Up to -110: heavier the more they owe relative to income, plus a flat risk
   // bump per open line.
   const debtPenalty = Math.round(debtBurden * 80) + openCredits * 10;
-  // Up to +60: a clean repayment track record on previous credits.
+  // Up to +60: a clean repayment track record on previous (fully repaid) credits.
   const historyBonus = Math.min(repaidOnTime, 3) * 20;
+  // Up to +50: rewarding a customer who is paying current credit(s) on time.
+  const onTimeBonus = Math.min(onTimeCredits, 2) * 25;
 
-  return { adjustment: historyBonus - debtPenalty, debtPenalty, historyBonus };
+  return {
+    adjustment: historyBonus + onTimeBonus - debtPenalty,
+    debtPenalty,
+    historyBonus,
+    onTimeBonus,
+  };
 }
 
 export function bandFor(score) {

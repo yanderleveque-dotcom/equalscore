@@ -4,7 +4,7 @@ Choices the brief (`docs/SPEC.md`) does not specify, one entry per choice, newes
 
 | # | Decision | Why | Status |
 |---|---|---|---|
-| D-001 | Clave Studio replaces the EqualScore demo at the repository root; the demo stays reachable as tag `equalscore-demo-final` and branch `equalscore-demo`. | One repo, one deploy target; `netlify.toml` and the old README describe another product. | proposed (Q1) |
+| D-001 | Clave replaces the EqualScore demo at the repository root; the demo files are deleted (git history keeps them), no tag or legacy folder. The product name is "Clave". | Owner's answer to Q1; `netlify.toml` and the old README describe another product. | accepted |
 | D-002 | Toolchain: Node 22, pnpm 10, Next.js 16 / React 19, TypeScript strict, Tailwind 4, shadcn/ui, next-intl 4, Vitest, Playwright; versions pinned. | Current stable releases; upgrades are their own PRs. | proposed |
 | D-003 | One `people` table for students and guests (`kind` column, nullable `user_id`), separate from `memberships`. Charges, payments, attendees and check-ins reference `people`. The brief's guest note is `people.note`, visible to the person. `people.phone` is the canonical WhatsApp number per school; `profiles.phone` is only the user's default. | §5 "person = student or guest", §5 guest conversion "keeping their history", §10 admin-created students before login. | proposed |
 | D-004 | Business status (`pending`/`active`/`inactive`) lives on `people`; `memberships.status` mirrors it by trigger for students. The `[slug]` gate is three-way: active → app, pending → waiting card, otherwise 404. | A student who never logs in has no membership to be active; a pending student must see that they are pending. | proposed |

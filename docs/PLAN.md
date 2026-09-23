@@ -1,4 +1,4 @@
-# Clave Studio v1 — Implementation plan
+# Clave v1 — Implementation plan
 
 Status: **proposed, awaiting approval** (nothing in `src/` exists yet). Companion documents: `docs/SPEC.md` (the brief, verbatim; `§n` below refers to its sections) and `DECISIONS.md` (choices the brief does not specify; entries are marked *proposed* until this plan is approved).
 
@@ -514,7 +514,7 @@ One security-definer trigger function `log_activity()` installed as `00_log_acti
 ## 6. Folder structure
 
 ```
-clave-studio/                          (this repository, root replaced — see Q1)
+clave/                          (this repository, root replaced — see Q1)
 ├── .github/workflows/ci.yml, deploy.yml
 ├── docs/  SPEC.md · PLAN.md · testing/milestone-N.md (hand-test scripts)
 ├── DECISIONS.md · README.md · .env.example · vercel.json · components.json
@@ -610,7 +610,7 @@ Estimate (opinion, not a commitment): M1 is the largest and least visible milest
 
 | # | Question | My recommendation and why |
 |---|---|---|
-| **Q1** | **Repository.** This repo currently holds the unrelated EqualScore static demo (`index.html`, `scripts/`, `styles/`, `netlify.toml`, a Spanish README). May I replace the root contents with the Next.js app, keeping the demo as tag `equalscore-demo-final` and branch `equalscore-demo`? Rename the GitHub repo to `clave-studio`? | Yes to both. `netlify.toml` would mislead a Vercel deploy and its catch-all rewrite describes another product. If you still need the demo served somewhere, it moves to `legacy/equalscore/` instead. |
+| **Q1** | **Repository.** This repo currently holds the unrelated EqualScore static demo. | **Answered:** delete the demo files outright (git history keeps them); no tag, branch or legacy folder. The product is called **Clave**. Renaming the GitHub repo to `clave` is optional and best done between sessions. |
 | **Q2** | **Accounts and plans.** A paid product needs Vercel **Pro** (Hobby forbids commercial use and its crons run once a day) and Supabase **Pro** for production (backups, no project pausing), plus custom SMTP (Resend free tier; Supabase's built-in mailer only delivers to project members), a product domain, and a Google Cloud OAuth client. Will you create these accounts (I will write the exact steps), and when can I have the Supabase project URL and keys for staging? | Estimate: about USD 45/month for the two Pro plans before domain and email. Staging can start on Supabase Free. **M1's testable deliverable (sign-in on your phone) needs a Supabase project**, so this is the first practical dependency. |
 | **Q3** | **Second city.** Is the other location on Santiago time? Magallanes (`America/Punta_Arenas`, no DST) and Easter Island would make one school timezone wrong for part of the year. | If yes, one `schools.timezone`. If not, I add a nullable `locations.timezone` override before M4 (one column, one function). |
 | **Q4** | **Payment model.** The brief links a payment to one charge. I propose exactly that: a transfer covering September and a costume becomes two payment rows from one form; a payment larger than what is open is refused; there are no credit balances ("keep the extra 5.000 for October") in v1. The alternative is a payments-and-allocations ledger with per-student credit and automatic application to new charges: more correct accounting, noticeably more to build and to explain. | Simple model for v1; the allocation ledger is an additive change later. Tell me if advance payments are common at your school, because then the alternative is worth it now. |
@@ -717,7 +717,7 @@ Grouped by area; each is a single line so you can scan for anything that looks w
 | C27 | §18 order: overrides (M2) before any student screen (M3); Settings and Team have no milestone; §18.1 seed needs M2/M3 tables; §5 cron for sessions (M4) vs §7 cron mentioned only for charges (M6); §11 trigger vs "activity log screen" in M9; §9b review (M5) creates charges (M6); §10 invite WhatsApp button (M3) vs §18.7 WhatsApp (M7) | Milestone dependencies. | The reordering in section 8 (D-031). |
 | C28 | §2 "Deploy on Vercel", §7 "Vercel cron", §19 "monthly subscription fee" | Hobby plan is non-commercial and daily-only crons. | Q2. |
 | C29 | §14 "Check in (via door QR)" as a portal feature | The portal cannot check in without the QR. | The portal overview lists today's expected sessions with their check-in state and says "scan the door QR"; no manual self check-in. |
-| C30 | §19 README vs the current repository contents | The README, `.gitignore` and `netlify.toml` describe another product. | Q1. |
+| C30 | §19 README vs the current repository contents | The README, `.gitignore` and `netlify.toml` describe another product. | Q1 (answered: delete them). |
 
 ## 10. Deferred on purpose (additive later, nothing in v1 blocks them)
 
